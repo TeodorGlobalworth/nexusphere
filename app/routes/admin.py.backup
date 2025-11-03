@@ -1,0 +1,1165 @@
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
+from flask_babel import gettext as _
+from flask import session
+from flask_login import current_user
+from app.models.user import User
+from app.models.project import Project, ProjectUser
+from app.models.organization import Organization
+from app.models.organization_package_change_log import OrganizationPackageChangeLog
+from app.models.email_account import EmailAccount
+from app.models.knowledge_file import KnowledgeFile
+from app import db
+from app import csrf
+from sqlalchemy import text
+from datetime import datetime
+import os
+from flask import current_app
+from app import limiter
+from app.services.vector_service import VectorService
+from flask_mail import Message
+from app import mail
+from sqlalchemy import func
+from app.utils.validators import sanitize_text, to_int, normalize_subdomain, is_valid_subdomain
+from app.utils.tenant import is_reserved_subdomain, build_external_url
+from app.utils.auth_decorators import require_admin, require_superadmin
+from app.models.context_prompt import ContextPrompt
+from app.services.audit import audit
+
+bp = Blueprint('admin', __name__)
+
+@bp.before_request
+def _admin_suspended_guard():
+    try:
+        if current_user.is_authenticated and not getattr(current_user, 'is_superadmin', False):
+            from app.models.organization import Organization as _Org
+            org_id = getattr(current_user, 'organization_id', None)
+            if org_id:
+                org = db.session.get(_Org, org_id)
+                if org and getattr(org, 'is_suspended', False):
+                    return redirect(url_for('main.suspended'))
+    except Exception:
+        pass
+
+@bp.before_request
+def require_admin_guard():
+    # Ensure user is authenticated first; redirect to login if not
+    try:
+        if not getattr(current_user, 'is_authenticated', False):
+            return redirect(url_for('auth.login'))
+    except Exception:
+        # If current_user proxy isn't available for some reason, redirect to login
+        return redirect(url_for('auth.login'))
+
+    # allow superadmin and normal admin to access admin area, but some actions are superadmin-only
+    if not (getattr(current_user, 'is_admin', False) or getattr(current_user, 'is_superadmin', False)):
+        return redirect(url_for('main.dashboard'))
+    # Block access if user's organization is suspended (except superadmin)
+    try:
+        if not getattr(current_user, 'is_superadmin', False):
+            from app.models.organization import Organization as _Org
+            org = db.session.get(_Org, getattr(current_user, 'organization_id', None)) if getattr(current_user, 'organization_id', None) else None
+            if org and getattr(org, 'is_suspended', False):
+                return redirect(url_for('main.suspended'))
+    except Exception:
+        pass
+    try:
+        tenant_org = getattr(g, 'current_org', None)
+        if getattr(current_user, 'is_superadmin', False):
+            if tenant_org:
+                session['active_org'] = tenant_org.id
+        else:
+            user_org_id = getattr(current_user, 'organization_id', None)
+            if tenant_org and tenant_org.id != user_org_id:
+                try:
+                    from app.models.organization import Organization as _Org
+                    org = db.session.get(_Org, user_org_id) if user_org_id else None
+                except Exception:
+                    org = None
+                if org and getattr(org, 'slug', None):
+                    target_url = build_external_url(org.slug, 'admin.dashboard', config=current_app.config)
+                    return redirect(target_url)
+                return redirect(url_for('main.dashboard'))
+            if not tenant_org and user_org_id:
+                from app.models.organization import Organization as _Org
+                org = db.session.get(_Org, user_org_id)
+                if org and getattr(org, 'slug', None):
+                    target_url = build_external_url(org.slug, 'admin.dashboard', config=current_app.config)
+                    return redirect(target_url)
+    except Exception:
+        pass
+    # RLS: ustaw zmienne sesyjne app.org_id / app.is_superadmin
+    try:
+        org_id = None
+        if getattr(current_user, 'is_superadmin', False):
+            # Superadmin może przeglądać wybraną organizację – jeśli brak, nie ustawiamy org_id
+            active = session.get('active_org')
+            if active:
+                org_id = int(active)
+            db.session.execute(text("SELECT set_config('app.is_superadmin','1', true)"))
+        else:
+            org_id = getattr(current_user, 'organization_id', None)
+            db.session.execute(text("SELECT set_config('app.is_superadmin','0', true)"))
+        if org_id:
+            db.session.execute(text("SELECT set_config('app.org_id', :oid, true)"), { 'oid': str(org_id) })
+        else:
+            # Wyczyść, aby polityki dawały pusty wynik dla selectów (poza superadminem)
+            db.session.execute(text("SELECT set_config('app.org_id', '', true)"))
+    except Exception:
+                    current_app.logger.exception('Nie udało się ustawić zmiennych sesyjnych dla RLS')
+
+@bp.route('/dashboard')
+def dashboard():
+    # Show counts scoped to the current organization for admins and scoped to the
+    # active organization for superadmins (if selected). Superadmins without an
+    # active org see an empty dashboard and should select an org first.
+    if getattr(current_user, 'is_superadmin', False):
+        active = session.get('active_org')
+        if active:
+            projects = Project.query.filter_by(organization_id=int(active)).all()
+            users = User.query.filter(User.organization_id == int(active)).all()
+        else:
+            projects = []
+            users = []
+        orgs = Organization.query.all()
+    else:
+        projects = Project.query.filter_by(organization_id=current_user.organization_id).all()
+        users = User.query.filter(User.organization_id == current_user.organization_id).all()
+        orgs = []
+
+    # Aggregate monthly tokens (dynamic) and package/fragments capacity
+    total_fragments_used = sum(getattr(p, 'fragments_used', 0) for p in projects)
+    total_packages_assigned = sum(getattr(p, 'packages_assigned', 0) for p in projects)
+    # Capacity derived from packages
+    total_tokens_capacity = total_packages_assigned * 2_000_000
+    total_fragments_capacity = total_packages_assigned * 2000
+    # Dynamic monthly tokens (aggregate)
+    try:
+        monthly_tokens_used = sum(p.get_monthly_tokens_used() for p in projects)
+    except Exception:
+        monthly_tokens_used = 0
+    # Organization package pool (for admins non-superadmin -> their org; superadmin -> active org if set)
+    org_limit = None
+    org_allocated = None
+    if getattr(current_user, 'is_superadmin', False):
+        active = session.get('active_org')
+        if active:
+            org = db.session.get(Organization, int(active))
+            if org:
+                try:
+                    org.recalc_packages_allocated()
+                except Exception:
+                    pass
+                org_limit = org.packages_limit
+                org_allocated = org.packages_allocated
+    else:
+        org = db.session.get(Organization, getattr(current_user, 'organization_id', None))
+        if org:
+            try:
+                org.recalc_packages_allocated()
+            except Exception:
+                pass
+            org_limit = org.packages_limit
+            org_allocated = org.packages_allocated
+
+    stats = {
+        'total_projects': len(projects),
+        'total_users': len(users),
+        'monthly_tokens_used': monthly_tokens_used,
+        'monthly_tokens_capacity': total_tokens_capacity,
+        'fragments_used': total_fragments_used,
+        'fragments_capacity': total_fragments_capacity,
+        'packages_assigned': total_packages_assigned,
+        'org_packages_limit': org_limit,
+        'org_packages_allocated': org_allocated
+    }
+
+    return render_template('admin/dashboard.html', projects=projects, users=users, stats=stats, orgs=orgs)
+
+@bp.route('/context-prompts', methods=['GET', 'POST'])
+@require_superadmin
+def context_prompts():
+    """Superadmin: manage global context prompt templates and create context keys."""
+    if request.method == 'POST':
+        # Create or update a global prompt (project_id = NULL)
+        context_key = sanitize_text(request.form.get('context_key'), max_len=200)
+        prompt_template = request.form.get('prompt_template') or ''
+        if not context_key or not prompt_template.strip():
+            flash(_('Kontekst i treść promptu są wymagane.'), 'error')
+            return redirect(url_for('admin.context_prompts'))
+        # Upsert-like behavior: update if exists, else insert
+        existing = ContextPrompt.query.filter_by(context_key=context_key, project_id=None).first()
+        if existing:
+            existing.prompt_template = prompt_template
+            existing.updated_at = datetime.utcnow()
+        else:
+            row = ContextPrompt(context_key=context_key, prompt_template=prompt_template, project_id=None, created_by=getattr(current_user, 'id', None))
+            db.session.add(row)
+        db.session.commit()
+        flash(_('Zapisano prompt dla kontekstu: %(key)s', key=context_key), 'success')
+        return redirect(url_for('admin.context_prompts'))
+    # GET: list all global keys
+    items = ContextPrompt.query.filter_by(project_id=None).order_by(ContextPrompt.context_key.asc()).all()
+    return render_template('admin/context_prompts.html', items=items)
+
+
+@bp.route('/experimental', methods=['GET'])
+@require_superadmin
+def experimental():
+    """Superadmin experimental tools dashboard."""
+    organizations = Organization.query.order_by(Organization.name.asc()).all()
+    org_payload = [
+        {
+            'id': org.id,
+            'name': org.name,
+            'slug': org.slug,
+        }
+        for org in organizations
+    ]
+
+    projects = Project.query.order_by(Project.name.asc()).all()
+    org_name_map = {org.id: org.name for org in organizations}
+    project_payload = [
+        {
+            'id': project.id,
+            'public_id': project.public_id,
+            'name': project.name,
+            'organization_id': project.organization_id,
+            'organization_name': org_name_map.get(project.organization_id),
+        }
+        for project in projects
+    ]
+
+    # Provide quick lookup for currently active organization (if any)
+    active_org = session.get('active_org')
+
+    return render_template(
+        'admin/experimental.html',
+        organizations=org_payload,
+        projects=project_payload,
+        active_org_id=int(active_org) if active_org else None,
+    )
+
+# Removed project-level context prompt overrides; contexts and prompts are defined globally by superadmin.
+
+@bp.route('/projects')
+@require_admin
+def projects():
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 12, type=int)
+    # Admins see projects within their organization; superadmins see selected org
+    if getattr(current_user, 'is_superadmin', False):
+        active = session.get('active_org')
+        if active:
+            query = Project.query.filter_by(organization_id=int(active)).order_by(Project.created_at.desc())
+        else:
+            query = Project.query.filter(Project.id == 0)  # empty
+    else:
+        query = Project.query.filter_by(organization_id=current_user.organization_id).order_by(Project.created_at.desc())
+
+    pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
+    return render_template('admin/projects.html', projects=pagination.items, pagination=pagination)
+
+@bp.route('/projects/new', methods=['GET', 'POST'])
+@limiter.limit("30/hour", methods=["POST"])  # limit only creation POST; allow unlimited GET form views
+@require_admin
+def new_project():
+    org_context = None
+    # Preload available global context keys for dropdown (avoid querying in Jinja template)
+    try:
+        contexts = ContextPrompt.query.filter_by(project_id=None).order_by(ContextPrompt.context_key.asc()).all()
+    except Exception:
+        contexts = []
+    quota_error = None
+    if request.method == 'POST':
+        name = sanitize_text(request.form.get('name'), max_len=120)
+        context = sanitize_text(request.form.get('context'), max_len=400)
+        description = sanitize_text(request.form.get('description'), max_len=5000)
+        response_style = request.form.get('response_style') or 'standard'
+        packages_raw = request.form.get('packages_assigned') or '1'
+        packages_assigned = to_int(packages_raw, default=1, minimum=1, maximum=100000)
+
+        org_id = current_user.organization_id if not current_user.is_superadmin else int(request.form.get('organization_id') or 0)
+        org = db.session.get(Organization, org_id) if org_id else None
+        if not current_user.is_superadmin and not org:
+            quota_error = 'Brak przypisanej organizacji – skontaktuj się z superadminem.'
+        else:
+            # Block duplicate project name within the same organization (case-insensitive)
+            if org and name:
+                dup = Project.query.filter(
+                    Project.organization_id == org.id,
+                    func.lower(Project.name) == func.lower(name)
+                ).first()
+                if dup:
+                    flash(_('Projekt o takiej nazwie już istnieje w tej organizacji.'), 'error')
+                    org_context = org
+                    return render_template('admin/new_project.html', org_context=org_context, contexts=contexts)
+            if context:
+                # Validate context exists in global prompts
+                exists = ContextPrompt.query.filter_by(context_key=context, project_id=None).first()
+                if not exists:
+                    flash(_('Wybrany kontekst nie istnieje w bazie globalnych promptów.'), 'error')
+                    org_context = org if not current_user.is_superadmin else None
+                    return render_template('admin/new_project.html', org_context=org_context, contexts=contexts)
+            if org:
+                try:
+                    org.recalc_packages_allocated()
+                except Exception:
+                    pass
+                remaining = (org.packages_limit - org.packages_allocated)
+                if packages_assigned > remaining:
+                    quota_error = _('Brak dostępnych pakietów. Pozostało: %(remaining)s.', remaining=remaining)
+        if not quota_error:
+            project = Project(
+                name=name,
+                context=context,
+                description=description,
+                created_by=current_user.id,
+                organization_id=org.id if org else None,
+                response_style=response_style,
+                packages_assigned=packages_assigned
+            )
+            db.session.add(project)
+            db.session.commit()
+            # Update org allocation snapshot
+            try:
+                if org:
+                    org.recalc_packages_allocated()
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+            db.session.add(ProjectUser(project_id=project.id, user_id=current_user.id, role='admin'))
+            db.session.commit()
+            flash(_('Projekt "%(name)s" został utworzony.', name=name), 'success')
+            return redirect(url_for('admin.projects'))
+        else:
+            flash(quota_error, 'error')
+            org_context = org
+    # Provide organization quota info for template (normal admin: their org; superadmin: all orgs via query in template)
+    if not current_user.is_superadmin:
+        org_context = db.session.get(Organization, current_user.organization_id) if current_user.organization_id else None
+    return render_template('admin/new_project.html', org_context=org_context, contexts=contexts)
+
+@bp.route('/organizations/<int:org_id>/update-packages', methods=['POST'])
+@require_superadmin
+def update_org_packages(org_id):
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    try:
+        new_limit_raw = request.form.get('packages_limit')
+        new_limit = int(new_limit_raw)
+        if new_limit < 1:
+            raise ValueError
+    except Exception:
+        flash(_('Niepoprawna wartość limitu pakietów.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    # Optional price updates
+    sp_raw = sanitize_text(request.form.get('start_package_price'), max_len=50)
+    ap_raw = sanitize_text(request.form.get('additional_package_price'), max_len=50)
+    try:
+        if sp_raw is not None and sp_raw != '':
+            org.start_package_price = float(sp_raw)
+        if ap_raw is not None and ap_raw != '':
+            org.additional_package_price = float(ap_raw)
+    except Exception:
+        flash(_('Niepoprawne wartości cen.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    try:
+        org.recalc_packages_allocated()
+    except Exception:
+        pass
+    if new_limit < org.packages_allocated:
+        flash(_('Nie można ustawić limitu %(new_limit)s < aktualnie przydzielone %(allocated)s.', new_limit=new_limit, allocated=org.packages_allocated), 'error')
+        return redirect(url_for('admin.organizations'))
+    org.packages_limit = new_limit
+    db.session.commit()
+    # Log snapshot
+    try:
+        log = OrganizationPackageChangeLog(
+            organization_id=org.id,
+            packages_total=org.packages_limit,
+            start_package_price=org.start_package_price,
+            additional_package_price=org.additional_package_price,
+            company_name=org.company_name,
+            tax_id=org.tax_id,
+            reg_address_street=org.reg_address_street,
+            reg_address_city=org.reg_address_city,
+            reg_address_postal_code=org.reg_address_postal_code,
+            reg_address_country=org.reg_address_country,
+            corr_address_street=org.corr_address_street,
+            corr_address_city=org.corr_address_city,
+            corr_address_postal_code=org.corr_address_postal_code,
+            corr_address_country=org.corr_address_country,
+            invoice_email=org.invoice_email,
+            contact_person=org.contact_person,
+            phone_number=org.phone_number,
+            changed_by=getattr(current_user, 'id', None)
+        )
+        db.session.add(log)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    flash(_('Limit pakietów i ceny zaktualizowane.'), 'success')
+    return redirect(url_for('admin.organizations'))
+
+@bp.route('/users')
+@require_admin
+def users():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    # Superadmin: view users for the currently selected organization (include admins)
+    if getattr(current_user, 'is_superadmin', False):
+        active = session.get('active_org')
+        if active:
+            query = User.query.filter(User.organization_id == int(active)).order_by(User.created_at.desc())
+        else:
+            query = User.query.filter(User.id == 0)
+    else:
+        # Admins see all users (including admins) within their organization
+        query = User.query.filter(User.organization_id == current_user.organization_id).order_by(User.created_at.desc())
+    pagination = db.paginate(query, page=page, per_page=per_page, error_out=False)
+    # Build an is_online map using timezone-aware UTC comparisons to avoid naive/aware errors
+    from datetime import timedelta, timezone
+    now_aware = datetime.now(timezone.utc)
+    def _to_utc(dt):
+        if dt is None:
+            return None
+        try:
+            if dt.tzinfo is None:
+                # Treat naive timestamps as UTC stored without tzinfo
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            return None
+    online_map = {}
+    for u in pagination.items:
+        last = _to_utc(getattr(u, 'last_login', None))
+        online_map[u.id] = bool(last and (now_aware - last) <= timedelta(minutes=10))
+    from flask import current_app as _app
+    return render_template('admin/users.html', users=pagination.items, pagination=pagination, total_users=pagination.total, today=now_aware.date(), online_map=online_map, config=_app.config)
+
+@bp.route('/users/new', methods=['GET', 'POST'])
+@limiter.limit("60/hour", methods=["POST"])  # limit only creation POST; allow unlimited GET form views
+@require_admin
+def new_user():
+    if request.method == 'POST':
+        username = sanitize_text(request.form.get('username'), max_len=64)
+        email = sanitize_text(request.form.get('email'), max_len=120)
+        email_norm = email.lower() if email else ''
+        password = request.form.get('password') or ''
+        is_admin = request.form.get('is_admin') == 'on'
+        is_superadmin = request.form.get('is_superadmin') == 'on'
+
+        # Assign org for new admin/user
+        if current_user.is_superadmin:
+            organization_id = int(request.form.get('organization_id') or 0) or None
+        else:
+            organization_id = current_user.organization_id
+
+        # Block creating a non-superadmin without organization
+        if not is_superadmin and not organization_id:
+            flash(_('Użytkownik musi mieć przypisaną organizację (z wyjątkiem superadmina).'), 'error')
+            return render_template('admin/new_user.html')
+
+        # Even for superadmin, if the checkbox is not set (regular admin/user), require org
+        if is_superadmin is False and organization_id is None:
+            flash(_('Wybierz organizację dla użytkownika.'), 'error')
+            return render_template('admin/new_user.html')
+
+        # Check if user exists
+        if User.query.filter_by(username=username).first():
+            flash(_('Użytkownik o tej nazwie już istnieje.'), 'error')
+            return render_template('admin/new_user.html')
+
+        if User.query.filter(func.lower(User.email) == email_norm).first():
+            flash(_('Użytkownik o tym emailu już istnieje.'), 'error')
+            return render_template('admin/new_user.html')
+
+        user = User(
+            username=username,
+            email=email_norm,
+            is_admin=is_admin,
+            is_superadmin=is_superadmin,
+            organization_id=organization_id
+        )
+        user.set_password(password)
+
+        db.session.add(user)
+        db.session.commit()
+        flash(_('Użytkownik "%(username)s" został utworzony pomyślnie.', username=username), 'success')
+        return redirect(url_for('admin.users'))
+
+    return render_template('admin/new_user.html')
+
+
+@bp.route('/organizations', methods=['GET', 'POST'])
+# Rate-limit only mutating (POST) requests; plain GET list should not quickly exhaust user's quota
+@limiter.limit("30/hour", methods=["POST"])  # previously applied to all methods causing rapid 429 via redirect loop
+@require_superadmin
+def organizations():
+    """Lista oraz tworzenie organizacji (superadmin only).
+
+    BUGFIX: Wcześniej każdorazowy GET wykonywał redirect na ten sam endpoint
+    (flash + redirect), powodując zapętlenie i szybkie wyczerpanie limitu 30/hour
+    ustawionego globalnie na trasie. Teraz rozdzielamy logikę GET/POST i limitujemy
+    wyłącznie operacje POST.
+    """
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+
+    if request.method == 'POST':
+        name = sanitize_text(request.form.get('name'), max_len=150)
+        slug_raw = request.form.get('url_prefix')
+        slug = normalize_subdomain(slug_raw)
+        if not name:
+            flash(_('Nazwa organizacji jest wymagana.'), 'error')
+            return redirect(url_for('admin.organizations'))
+        if not slug or not is_valid_subdomain(slug):
+            flash(_('Wymagany jest poprawny przedrostek adresu (litery, cyfry, myślnik).'), 'error')
+            return redirect(url_for('admin.organizations'))
+        if is_reserved_subdomain(slug):
+            flash(_('Wybrany przedrostek jest zarezerwowany.'), 'error')
+            return redirect(url_for('admin.organizations'))
+        if Organization.query.filter_by(name=name).first():
+            flash(_('Organizacja o tej nazwie już istnieje.'), 'error')
+            return redirect(url_for('admin.organizations'))
+        if Organization.query.filter(func.lower(Organization.slug) == slug.lower()).first():
+            flash(_('Organizacja z tym adresem URL już istnieje.'), 'error')
+            return redirect(url_for('admin.organizations'))
+
+        org = Organization(
+            name=name,
+            slug=slug,
+            created_by=current_user.id,
+            packages_limit=int(request.form.get('packages_limit', 10)),
+            company_name=request.form.get('company_name'),
+            tax_id=request.form.get('tax_id'),
+            reg_address_street=request.form.get('reg_address_street'),
+            reg_address_city=request.form.get('reg_address_city'),
+            reg_address_postal_code=request.form.get('reg_address_postal_code'),
+            reg_address_country=request.form.get('reg_address_country'),
+            corr_address_street=request.form.get('corr_address_street'),
+            corr_address_city=request.form.get('corr_address_city'),
+            corr_address_postal_code=request.form.get('corr_address_postal_code'),
+            corr_address_country=request.form.get('corr_address_country'),
+            invoice_email=request.form.get('invoice_email'),
+            contact_person=request.form.get('contact_person'),
+            phone_number=request.form.get('phone_number'),
+            start_package_price=float(request.form.get('start_package_price', 0) or 0),
+            additional_package_price=float(request.form.get('additional_package_price', 0) or 0),
+        )
+        db.session.add(org)
+        db.session.commit()
+        # Initial log snapshot
+        try:
+            log = OrganizationPackageChangeLog(
+                organization_id=org.id,
+                packages_total=org.packages_limit,
+                start_package_price=org.start_package_price,
+                additional_package_price=org.additional_package_price,
+                company_name=org.company_name,
+                tax_id=org.tax_id,
+                reg_address_street=org.reg_address_street,
+                reg_address_city=org.reg_address_city,
+                reg_address_postal_code=org.reg_address_postal_code,
+                reg_address_country=org.reg_address_country,
+                corr_address_street=org.corr_address_street,
+                corr_address_city=org.corr_address_city,
+                corr_address_postal_code=org.corr_address_postal_code,
+                corr_address_country=org.corr_address_country,
+                invoice_email=org.invoice_email,
+                contact_person=org.contact_person,
+                phone_number=org.phone_number,
+                changed_by=getattr(current_user, 'id', None)
+            )
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        primary_domain = current_app.config.get('PRIMARY_DOMAIN')
+        org_url = build_external_url(org.slug, 'admin.dashboard', config=current_app.config)
+        flash(_('Organizacja utworzona. Adres: %(url)s', url=org_url if primary_domain else org.slug), 'success')
+        return redirect(url_for('admin.organizations'))  # PRG pattern
+
+    # GET: show list
+    orgs = Organization.query.all()
+    primary_domain = current_app.config.get('PRIMARY_DOMAIN')
+    admin_subdomain = current_app.config.get('ADMIN_SUBDOMAIN')
+    tenant_port = current_app.config.get('TENANT_PUBLIC_PORT') or current_app.config.get('TENANT_DEV_PORT')
+    multi_query_enabled = bool(current_app.config.get('MULTI_QUERY_ENABLED', True))
+    return render_template(
+        'admin/organizations.html',
+        orgs=orgs,
+        primary_domain=primary_domain,
+        admin_subdomain=admin_subdomain,
+        tenant_port=tenant_port,
+        multi_query_enabled=multi_query_enabled,
+    )
+
+@bp.route('/organizations/<int:org_id>/export-logs.csv', methods=['GET'])
+@require_superadmin
+def export_org_package_logs_csv(org_id):
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+    import csv
+    from io import StringIO
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    logs = OrganizationPackageChangeLog.query.filter_by(organization_id=org.id).order_by(OrganizationPackageChangeLog.changed_at.asc()).all()
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['changed_at','packages_total','start_package_price','additional_package_price','company_name','tax_id','reg_street','reg_city','reg_postal','reg_country','corr_street','corr_city','corr_postal','corr_country','invoice_email','contact_person','phone_number'])
+    for l in logs:
+        writer.writerow(l.to_csv_row())
+    # Prepend UTF-8 BOM so Excel on Windows preserves Polish characters
+    output = '\ufeff' + si.getvalue()
+    from flask import Response
+    return Response(output, mimetype='text/csv; charset=utf-8', headers={'Content-Disposition': f'attachment; filename="org_{org.id}_package_logs.csv"', 'Content-Type': 'text/csv; charset=utf-8'})
+
+@bp.route('/organizations/export-logs-all.csv', methods=['GET'])
+@require_superadmin
+def export_all_org_package_logs_csv():
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+    import csv
+    from io import StringIO
+    from flask import Response
+    orgs = Organization.query.all()
+    org_map = {o.id: o.name for o in orgs}
+    logs = OrganizationPackageChangeLog.query.order_by(OrganizationPackageChangeLog.organization_id.asc(), OrganizationPackageChangeLog.changed_at.asc()).all()
+    si = StringIO()
+    writer = csv.writer(si)
+    # Include org columns + same columns as single-org export
+    writer.writerow(['organization_id','organization_name','changed_at','packages_total','start_package_price','additional_package_price','company_name','tax_id','reg_street','reg_city','reg_postal','reg_country','corr_street','corr_city','corr_postal','corr_country','invoice_email','contact_person','phone_number'])
+    for l in logs:
+        row = [l.organization_id, org_map.get(l.organization_id, '')]
+        row.extend(l.to_csv_row())
+        writer.writerow(row)
+    output = '\ufeff' + si.getvalue()
+    return Response(output, mimetype='text/csv; charset=utf-8', headers={'Content-Disposition': 'attachment; filename="all_org_package_logs.csv"', 'Content-Type': 'text/csv; charset=utf-8'})
+
+
+@bp.route('/organizations/<int:org_id>/edit', methods=['GET', 'POST'])
+@require_superadmin
+def edit_organization(org_id):
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+
+    if request.method == 'POST':
+        new_slug_raw = request.form.get('slug') or org.slug
+        new_slug = normalize_subdomain(new_slug_raw)
+        if not new_slug or not is_valid_subdomain(new_slug):
+            flash(_('Nieprawidłowy przedrostek adresu (dozwolone litery, cyfry, myślnik).'), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+        if is_reserved_subdomain(new_slug):
+            flash(_('Ten przedrostek jest zarezerwowany.'), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+        slug_conflict = Organization.query.filter(func.lower(Organization.slug) == new_slug.lower(), Organization.id != org.id).first()
+        if slug_conflict:
+            flash(_('Inna organizacja używa już tego adresu URL.'), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+
+        # Name is immutable (do not change)
+        # Read and validate fields
+        try:
+            new_limit = int(request.form.get('packages_limit') or org.packages_limit or 1)
+            if new_limit < 1:
+                raise ValueError
+        except Exception:
+            flash(_('Niepoprawna wartość limitu pakietów.'), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+
+        # Optional price updates
+        sp_raw = request.form.get('start_package_price')
+        ap_raw = request.form.get('additional_package_price')
+        try:
+            if sp_raw is not None and sp_raw != '':
+                org.start_package_price = float(sp_raw)
+            if ap_raw is not None and ap_raw != '':
+                org.additional_package_price = float(ap_raw)
+        except Exception:
+            flash(_('Niepoprawne wartości cen.'), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+
+        # Other editable fields
+        org.company_name = request.form.get('company_name')
+        org.tax_id = request.form.get('tax_id')
+        org.invoice_email = request.form.get('invoice_email')
+        org.contact_person = request.form.get('contact_person')
+        org.phone_number = request.form.get('phone_number')
+        org.reg_address_street = request.form.get('reg_address_street')
+        org.reg_address_city = request.form.get('reg_address_city')
+        org.reg_address_postal_code = request.form.get('reg_address_postal_code')
+        org.reg_address_country = request.form.get('reg_address_country')
+        org.corr_address_street = request.form.get('corr_address_street')
+        org.corr_address_city = request.form.get('corr_address_city')
+        org.corr_address_postal_code = request.form.get('corr_address_postal_code')
+        org.corr_address_country = request.form.get('corr_address_country')
+
+        # Organization-level OAuth updates (leave secrets unchanged if empty)
+        # Gmail
+        org.gmail_client_id = request.form.get('gmail_client_id') or org.gmail_client_id
+        gmail_secret_new = request.form.get('gmail_client_secret') or ''
+        if gmail_secret_new.strip():  # only overwrite if provided
+            org.gmail_client_secret = gmail_secret_new.strip()
+        org.gmail_scopes = request.form.get('gmail_scopes') or org.gmail_scopes
+        org.gmail_redirect_uri = request.form.get('gmail_redirect_uri') or org.gmail_redirect_uri
+        org.gmail_auth_uri = request.form.get('gmail_auth_uri') or org.gmail_auth_uri
+        org.gmail_token_uri = request.form.get('gmail_token_uri') or org.gmail_token_uri
+        # Outlook
+        org.outlook_client_id = request.form.get('outlook_client_id') or org.outlook_client_id
+        outlook_secret_new = request.form.get('outlook_client_secret') or ''
+        if outlook_secret_new.strip():
+            org.outlook_client_secret = outlook_secret_new.strip()
+        org.outlook_scopes = request.form.get('outlook_scopes') or org.outlook_scopes
+        org.outlook_redirect_uri = request.form.get('outlook_redirect_uri') or org.outlook_redirect_uri
+        org.outlook_tenant = request.form.get('outlook_tenant') or org.outlook_tenant
+        org.outlook_auth_uri = request.form.get('outlook_auth_uri') or org.outlook_auth_uri
+        org.outlook_token_uri = request.form.get('outlook_token_uri') or org.outlook_token_uri
+
+        # Validate capacity
+        try:
+            org.recalc_packages_allocated()
+        except Exception:
+            pass
+        if new_limit < (org.packages_allocated or 0):
+            flash(_('Nie można ustawić limitu %(new_limit)s < aktualnie przydzielone %(allocated)s.', new_limit=new_limit, allocated=org.packages_allocated), 'error')
+            return redirect(url_for('admin.edit_organization', org_id=org.id))
+        org.slug = new_slug
+
+        org.packages_limit = new_limit
+
+        db.session.commit()
+        # Log snapshot after change
+        try:
+            log = OrganizationPackageChangeLog(
+                organization_id=org.id,
+                packages_total=org.packages_limit,
+                start_package_price=org.start_package_price,
+                additional_package_price=org.additional_package_price,
+                company_name=org.company_name,
+                tax_id=org.tax_id,
+                reg_address_street=org.reg_address_street,
+                reg_address_city=org.reg_address_city,
+                reg_address_postal_code=org.reg_address_postal_code,
+                reg_address_country=org.reg_address_country,
+                corr_address_street=org.corr_address_street,
+                corr_address_city=org.corr_address_city,
+                corr_address_postal_code=org.corr_address_postal_code,
+                corr_address_country=org.corr_address_country,
+                invoice_email=org.invoice_email,
+                contact_person=org.contact_person,
+                phone_number=org.phone_number,
+                changed_by=getattr(current_user, 'id', None)
+            )
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        flash(_('Dane organizacji zostały zaktualizowane.'), 'success')
+        return redirect(url_for('admin.organizations'))
+
+    primary_domain = current_app.config.get('PRIMARY_DOMAIN')
+    admin_subdomain = current_app.config.get('ADMIN_SUBDOMAIN')
+    tenant_port = current_app.config.get('TENANT_PUBLIC_PORT') or current_app.config.get('TENANT_DEV_PORT')
+    return render_template('admin/organization_edit.html', org=org, primary_domain=primary_domain, admin_subdomain=admin_subdomain, tenant_port=tenant_port)
+
+
+@bp.route('/organizations/<int:org_id>/set-active', methods=['POST'])
+@require_superadmin
+def set_active_organization(org_id):
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+
+    session['active_org'] = org.id
+    flash(_('Aktywna organizacja ustawiona na %(org_name)s', org_name=org.name), 'success')
+    return redirect(url_for('admin.organizations'))
+
+
+@bp.route('/organizations/clear-active', methods=['POST'])
+@require_superadmin
+def clear_active_organization():
+    if not getattr(current_user, 'is_superadmin', False):
+        return redirect(url_for('admin.dashboard'))
+    session.pop('active_org', None)
+    flash(_('Aktywna organizacja wyczyszczona'), 'success')
+    return redirect(url_for('admin.organizations'))
+
+@bp.route('/organizations/<int:org_id>/suspend', methods=['POST'])
+@require_superadmin
+def suspend_organization(org_id):
+    if not getattr(current_user, 'is_superadmin', False):
+        flash(_('Brak uprawnień.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    if org.is_suspended:
+        flash(_('Organizacja już jest zawieszona.'), 'info')
+        return redirect(url_for('admin.organizations'))
+    org.is_suspended = True
+    db.session.commit()
+    # Notify all users in org via email (best-effort)
+    try:
+        users = org.users.all() if hasattr(org.users, 'all') else []
+        for u in users:
+            if getattr(u, 'email', None):
+                try:
+                    msg = Message(subject=_('OmniResponse - Organizacja zawieszona'), recipients=[u.email])
+                    msg.body = _('Twoja organizacja w OmniResponse została zawieszona - skontaktuj się z Supportem.')
+                    mail.send(msg)
+                except Exception:
+                    current_app.logger.warning('Mail send failed for %s', u.email)
+    except Exception:
+        current_app.logger.exception('Failed to send suspension emails')
+    # Pause email monitoring for this organization's projects (disable accounts)
+    try:
+        proj_ids = [p.id for p in org.projects]
+        from app.models.email_account import EmailAccount
+        EmailAccount.query.filter(EmailAccount.project_id.in_(proj_ids)).update({EmailAccount.enable_imap_idle: False}, synchronize_session=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Failed to pause email monitoring')
+    flash(_('Organizacja została zawieszona.'), 'success')
+    return redirect(url_for('admin.organizations'))
+
+@bp.route('/organizations/<int:org_id>/unsuspend', methods=['POST'])
+@require_superadmin
+def unsuspend_organization(org_id):
+    if not getattr(current_user, 'is_superadmin', False):
+        flash(_('Brak uprawnień.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    org = db.session.get(Organization, org_id)
+    if not org:
+        flash(_('Organizacja nie znaleziona.'), 'error')
+        return redirect(url_for('admin.organizations'))
+    if not org.is_suspended:
+        flash(_('Organizacja nie jest zawieszona.'), 'info')
+        return redirect(url_for('admin.organizations'))
+    org.is_suspended = False
+    db.session.commit()
+    flash(_('Organizacja została odwieszona.'), 'success')
+    return redirect(url_for('admin.organizations'))
+
+
+@bp.route('/users/<int:user_id>/projects', methods=['GET'])
+def user_projects(user_id):
+    """Return HTML fragment with projects and user's current assignments."""
+    user = db.session.get(User, user_id)
+    if not user:
+        return ('', 404)
+    # Allow filtering projects by org (org_id passed as query param).
+    org_id = request.args.get('org_id')
+    if org_id:
+        try:
+            org_id = int(org_id)
+            projects = Project.query.filter_by(organization_id=org_id).all()
+        except Exception:
+            projects = Project.query.all()
+    else:
+        # Default behavior: if current_user is admin (non-superadmin), scope to their org
+        if getattr(current_user, 'is_superadmin', False):
+            projects = Project.query.all()
+        else:
+            projects = Project.query.filter_by(organization_id=current_user.organization_id).all()
+    assigned_ids = [pu.project_id for pu in user.projects]
+    return render_template('admin/_user_projects_modal.html', user=user, projects=projects, assigned_ids=assigned_ids)
+
+
+@bp.route('/users/<int:user_id>/projects', methods=['POST'])
+@limiter.limit("120/hour")
+def update_user_projects(user_id):
+    """Accept JSON payload with project_ids and update ProjectUser assignments for the user."""
+    user = db.session.get(User, user_id)
+    if not user: return jsonify({'error': _('Użytkownik nie znaleziony')}), 404
+
+    is_superadmin = bool(getattr(current_user, 'is_superadmin', False))
+    is_admin = bool(getattr(current_user, 'is_admin', False))
+    if not (is_superadmin or is_admin):
+        audit('user_project_update_denied', target_type='user', target_id=user_id, success=False, meta={'reason': 'not_admin'})
+        return jsonify({'error': _('Brak uprawnień')}), 403
+
+    if not is_superadmin:
+        current_org = getattr(current_user, 'organization_id', None)
+        target_org = getattr(user, 'organization_id', None)
+        if current_org is None or current_org != target_org:
+            audit('user_project_update_denied', target_type='user', target_id=user_id, success=False, meta={'reason': 'cross_org'})
+            return jsonify({'error': _('Brak uprawnień')}), 403
+        if getattr(user, 'is_superadmin', False):
+            audit('user_project_update_denied', target_type='user', target_id=user_id, success=False, meta={'reason': 'target_superadmin'})
+            return jsonify({'error': _('Brak uprawnień')}), 403
+
+    data = request.get_json() or {}
+    project_ids = data.get('project_ids', [])
+    # Accept either numeric IDs or public_id (UUID) strings from the client.
+    resolved_ids = set()
+    for p in project_ids:
+        if p is None:
+            continue
+        # If it's already an int, accept it
+        try:
+            pid = int(p)
+            resolved_ids.add(pid)
+            continue
+        except Exception:
+            pass
+
+        # Otherwise treat as public_id and resolve to internal numeric id
+        try:
+            proj = Project.query.filter_by(public_id=str(p)).first()
+            if proj:
+                resolved_ids.add(proj.id)
+        except Exception:
+            # ignore invalid entries
+            continue
+
+    # Current assignments
+    current_pus = ProjectUser.query.filter_by(user_id=user.id).all()
+    current_ids = {pu.project_id for pu in current_pus}
+    new_ids = set(resolved_ids)
+
+    to_add = new_ids - current_ids
+    to_remove = current_ids - new_ids
+
+    # Remove unselected
+    if to_remove:
+        ProjectUser.query.filter(ProjectUser.user_id == user.id, ProjectUser.project_id.in_(list(to_remove))).delete(synchronize_session=False)
+
+    # Add new assignments
+    for pid in to_add:
+        # Validate project exists
+        proj = db.session.get(Project, pid)
+        if not proj:
+            continue
+        pu = ProjectUser(project_id=pid, user_id=user.id, role='user')
+        db.session.add(pu)
+
+    db.session.commit()
+
+    audit('user_project_update', target_type='user', target_id=user_id, success=True, meta={'project_ids': sorted(new_ids)})
+
+    return jsonify({'status': 'ok', 'project_count': len(new_ids)})
+
+
+@bp.route('/users/<int:user_id>/edit', methods=['GET'])
+def edit_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return ('', 404)
+    # simple org-scoping: admins can edit users in their org; superadmin can edit any within active org
+    if not current_user.is_superadmin and user.organization_id != current_user.organization_id:
+        return ('', 403)
+    return render_template('admin/_user_edit_modal.html', user=user)
+
+
+@bp.route('/users/<int:user_id>/edit', methods=['POST'])
+@limiter.limit("120/hour")
+def update_user(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': _('Użytkownik nie znaleziony')}), 404
+    # permission check
+    if not current_user.is_superadmin and user.organization_id != current_user.organization_id:
+        return jsonify({'error': _('Brak dostępu')}), 403
+
+    data = request.get_json() or {}
+    username = data.get('username')
+    password = data.get('password', '')
+    is_admin_flag = data.get('is_admin')
+
+    if username:
+        # check uniqueness
+        existing = User.query.filter(User.username == username, User.id != user.id).first()
+        if existing:
+            return jsonify({'error': _('Nazwa użytkownika już zajęta')}), 400
+        user.username = username
+
+    if password:
+        user.set_password(password)
+
+    # Handle admin flag toggle: only superadmin can change any; admins can change others in their org but cannot remove their own admin flag
+    if is_admin_flag is not None:
+        # convert truthy values to bool
+        new_is_admin = bool(is_admin_flag)
+        if user.id == current_user.id and not new_is_admin:
+            return jsonify({'error': _('Nie możesz odebrać sobie uprawnień administratora.')}), 400
+        # only allow change if current_user is superadmin or same org admin
+        if not current_user.is_superadmin and current_user.organization_id != user.organization_id:
+            return jsonify({'error': _('Brak dostępu')}), 403
+        user.is_admin = new_is_admin
+
+    db.session.commit()
+    return jsonify({'status': 'ok', 'username': user.username})
+
+
+@bp.route('/users/<int:user_id>/reset-mfa', methods=['POST'])
+@limiter.limit("30/hour")
+def admin_reset_user_mfa(user_id):
+    """Allow ADMIN and SUPERADMIN to reset a user's MFA (clear secret and disable)."""
+    # Permission: superadmin can reset any; admin can reset within their org and not superadmin accounts.
+    target = db.session.get(User, user_id)
+    if not target:
+        return jsonify({'error': _('Użytkownik nie znaleziony')}), 404
+    if not (getattr(current_user, 'is_superadmin', False) or (getattr(current_user, 'is_admin', False) and target.organization_id == current_user.organization_id)):
+        return jsonify({'error': _('Brak uprawnień')}), 403
+
+    # Prevent resetting MFA of superadmin by non-superadmin
+    if getattr(target, 'is_superadmin', False) and not getattr(current_user, 'is_superadmin', False):
+        return jsonify({'error': _('Nie można resetować MFA superadmina bez uprawnień superadmin.')}), 403
+
+    target.disable_mfa()
+    db.session.commit()
+    try:
+        if target.email:
+            msg = Message(subject=_('OmniResponse - MFA zostało zresetowane'), recipients=[target.email])
+            msg.body = _('Administrator zresetował Twoje MFA. Zaloguj się i ponownie skonfiguruj MFA.')
+            mail.send(msg)
+    except Exception:
+        current_app.logger.warning('Nie udało się wysłać powiadomienia o resecie MFA do %s', target.email)
+    return jsonify({'status': 'ok'})
+
+
+@bp.route('/users/<int:user_id>/send-password-reset', methods=['POST'])
+@limiter.limit("30/hour")
+def admin_send_password_reset(user_id):
+    if not (getattr(current_user, 'is_superadmin', False) or getattr(current_user, 'is_admin', False)):
+        return jsonify({'error': _('Brak uprawnień')}), 403
+    target = db.session.get(User, user_id)
+    if not target:
+        return jsonify({'error': _('Użytkownik nie znaleziony')}), 404
+    # Admin can only operate in their org unless superadmin
+    if not getattr(current_user, 'is_superadmin', False) and target.organization_id != current_user.organization_id:
+        return jsonify({'error': _('Brak uprawnień')}), 403
+    try:
+        from itsdangerous import URLSafeTimedSerializer
+        s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        token = s.dumps({'uid': target.id, 'email': target.email}, salt='password-reset')
+        reset_url = url_for('auth.password_reset', token=token, _external=True)
+        msg = Message(subject=_('OmniResponse - Reset hasła'), recipients=[target.email])
+        msg.body = _('Administrator wysłał link do resetu hasła. Użyj go, aby ustawić nowe hasło (ważny 1 godzinę):\n%(url)s', url=reset_url)
+        current_app.logger.warning('Admin-triggered password reset email to %s', target.email)
+        mail.send(msg)
+        current_app.logger.warning('Admin-triggered password reset email SENT to %s', target.email)
+        return jsonify({'status': 'ok'})
+    except Exception:
+        return jsonify({'error': _('Nie udało się wysłać wiadomości')}), 500
+
+
+@bp.route('/users/<int:user_id>', methods=['DELETE'])
+@limiter.limit("60/hour")
+def delete_user(user_id):
+    # Prevent self-delete
+    if user_id == current_user.id:
+        return jsonify({'error': _('Nie możesz usunąć własnego konta.')}), 400
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'error': _('Użytkownik nie znaleziony')}), 404
+    if not current_user.is_superadmin and user.organization_id != current_user.organization_id:
+        return jsonify({'error': _('Brak dostępu')}), 403
+    try:
+        # remove project assignments
+        ProjectUser.query.filter_by(user_id=user.id).delete()
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'status': 'ok'})
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Error deleting user')
+    return jsonify({'error': _('Błąd podczas usuwania użytkownika')}), 500
+
+
+@bp.route('/projects/<project_public_id>', methods=['DELETE'])
+@limiter.limit("30/hour")
+def delete_project(project_public_id):
+    # Admin-only enforced by before_request decorator
+    project = Project.query.filter_by(public_id=project_public_id).first()
+    if not project: return jsonify({'error': _('Projekt nie istnieje.')}), 404
+    # Always require that the acting user has MFA enabled for destructive project deletion
+    if not getattr(current_user, 'mfa_enabled', False):
+        # Do not allow silent deletion – force user to enable MFA first
+        return jsonify({
+            'error': _('Aby usunąć projekt musisz najpierw aktywować MFA na swoim koncie.'),
+            'require_mfa_setup': True,
+            'mfa_setup_url': url_for('user.mfa_setup')
+        }), 403
+
+    # Require a valid current TOTP code (header or JSON/body fallback) every time
+    # Extract MFA code from headers or payload (gracefully handle absent/invalid JSON)
+    mfa_code = None
+    try:
+        mfa_code = (
+            request.headers.get('X-MFA-Code') or
+            request.headers.get('X-Mfa-Code') or
+            request.headers.get('X-Mfa') or
+            request.headers.get('X-MfaToken')
+        )
+        if not mfa_code:
+            try:
+                if request.is_json:
+                    data = request.get_json(silent=True) or {}
+                    mfa_code = data.get('mfa_code')
+                else:
+                    mfa_code = request.form.get('mfa_code')
+            except Exception:
+                mfa_code = None
+    except Exception:
+        mfa_code = None
+
+    if not mfa_code or not current_user.verify_totp(mfa_code):
+        return jsonify({'error': _('Niepoprawny kod MFA'), 'invalid_mfa': True}), 401
+
+    try:
+        # Remove upload files for this project if present
+        try:
+            upload_root = current_app.config.get('UPLOAD_FOLDER')
+            if upload_root:
+                root_real = os.path.realpath(upload_root)
+                project_dir = os.path.join(upload_root, str(project.id))
+                proj_real = os.path.realpath(project_dir)
+                if os.path.exists(proj_real) and os.path.commonpath([root_real, proj_real]) == root_real:
+                    # remove directory tree
+                    import shutil
+                    shutil.rmtree(proj_real)
+        except Exception:
+            current_app.logger.exception('Nie udało się usunąć plików projektu z dysku')
+
+        # Explicitly delete dependent rows to avoid SQLAlchemy cascade/flush issues
+        try:
+            KnowledgeFile.query.filter_by(project_id=project.id).delete(synchronize_session=False)
+            EmailAccount.query.filter_by(project_id=project.id).delete(synchronize_session=False)
+            ProjectUser.query.filter_by(project_id=project.id).delete(synchronize_session=False)
+        except Exception:
+            current_app.logger.exception('Błąd podczas usuwania zależnych rekordów z DB')
+
+        # Remove Qdrant vector collection for this project
+        try:
+            vs = VectorService()
+            vs.delete_collection(project.id)
+        except Exception:
+            current_app.logger.exception('Nie udało się usunąć kolekcji Qdrant dla projektu %s', project.id)
+
+        # Finally remove the project row
+        Project.query.filter_by(id=project.id).delete(synchronize_session=False)
+        db.session.commit()
+
+        return jsonify({'status': 'ok'})
+    except Exception:
+        current_app.logger.exception('Błąd podczas usuwania projektu')
+        db.session.rollback()
+    return jsonify({'error': _('Wystąpił błąd podczas usuwania projektu.')}), 500

@@ -1,0 +1,172 @@
+﻿{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - {{ _('Historia odpowiedzi') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 project-history-page"
+     data-default-from-date="{{ default_from_date }}"
+     data-default-to-date="{{ default_to_date }}"
+     data-default-from-iso="{{ default_from_iso }}"
+     data-default-to-iso="{{ default_to_iso }}">
+  <div class="row mb-4 align-items-center">
+    <div class="col-12 col-md-7">
+      <h1 class="h3 mb-1">{{ _('Historia odpowiedzi AI') }}</h1>
+      <p class="mb-0">{{ Przeglądaj pełne odpowiedzi wygenerowane przez system wraz z kontekstem wyszukanym w bazie wiedzy. }}</p>
+    </div>
+    <div class="col-12 col-md-5 text-md-end mt-3 mt-md-0">
+      <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="btn btn-outline-secondary btn-sm me-2"><i class="material-icons me-1">arrow_back</i>{{ _('Powrót do projektu') }}</a>
+      <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}#responseForm" class="btn btn-primary btn-sm"><i class="material-icons me-1">smart_toy</i>{{ _('Generuj nową odpowiedź') }}</a>
+    </div>
+  </div>
+
+  <div class="ui-panel mb-4">
+    <div class="card-body pb-1">
+      <form id="historyFiltersForm" class="row g-3 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+        <div class="col-12 col-lg-4">
+          <label class="form-label" for="historySearch">{{ _('Szukaj') }}</label>
+          <input type="search" id="historySearch" class="form-control" placeholder="{{ Temat, adres, treść... }}">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="historySource">{{ _('Źródło') }}</label>
+          <select id="historySource" class="form-select">
+            {% for choice in source_choices %}
+            <option value="{{ choice.value }}">{{ choice.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="historySpam">{{ _('Spam') }}</label>
+          <select id="historySpam" class="form-select">
+            <option value="">{{ _('Wszystkie') }}</option>
+            <option value="false">{{ _('Tylko oznaczone jako wiarygodne') }}</option>
+            <option value="true">{{ _('Tylko oznaczone jako spam') }}</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="historyDateFrom">{{ _('Od') }}</label>
+          <input type="date" id="historyDateFrom" class="form-control">
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="historyDateTo">{{ _('Do') }}</label>
+          <input type="date" id="historyDateTo" class="form-control">
+        </div>
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button type="submit" class="btn btn-primary btn-sm"><i class="material-icons me-1">filter_alt</i>{{ _('Zastosuj filtry') }}</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="historyResetBtn"><i class="material-icons me-1">restart_alt</i>{{ _('Resetuj') }}</button>
+          <button type="button" class="btn btn-outline-primary btn-sm ms-auto" id="historyRefreshBtn"><i class="material-icons me-1">refresh</i>{{ _('Odśwież') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="ui-panel">
+    <div class="card-body">
+      <div id="historyTableWrapper" class="table-responsive">
+        <table class="table table-hover align-middle" id="historyTable">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">{{ _('Data') }}</th>
+              <th scope="col">{{ _('Temat') }}</th>
+              <th scope="col">{{ _('Źródło') }}</th>
+              <th scope="col" class="text-end">{{ _('Tokeny') }}</th>
+              <th scope="col">{{ Adres / Użytkownik }}</th>
+              <th scope="col" class="text-center">{{ _('Fragmenty') }}</th>
+              <th scope="col" class="text-end">{{ _('Akcje') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr id="historyLoadingRow">
+              <td colspan="7" class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">{{ Trwa ładowanie... }}</span></div>
+                <div class="mt-2 small">{{ Wczytywanie danych historii... }}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="historyEmptyState" class="text-center py-5 d-none">
+        <i class="material-icons display-4">history_toggle_off</i>
+        <p class="mt-3 mb-1 fw-semibold">{{ _('Brak wyników dla wybranych filtrów') }}</p>
+        <p class="text">{{ Spróbuj zmienić zakres dat lub kryteria wyszukiwania. }}</p>
+      </div>
+      <nav id="historyPagination" class="d-none" aria-label="{{ _('Paginacja historii') }}"></nav>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="historyEntryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="material-icons me-2">article</i>{{ _('Szczegóły odpowiedzi') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Zamknij') }}"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row small" id="historyEntryMeta"></dl>
+        <h6 class="fw-semibold mt-3">{{ _('Treść odpowiedzi') }}</h6>
+  <pre id="historyEntryBody" class="kb-preview-box history-preview-box text-light small"></pre>
+        <div class="mt-4">
+          <h6 class="fw-semibold">{{ _('Powiązane fragmenty') }}</h6>
+          <div id="historyEntryChunks" class="list-group small"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="historyChunkModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="material-icons me-2">view_list</i>{{ _('Podgląd fragmentu') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Zamknij') }}"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row small" id="historyChunkMeta"></dl>
+  <pre id="historyChunkBody" class="kb-preview-box history-fragment-box text-light small"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="i18n-project-history" type="application/json">{{ {
+  'loading': "Wczytywanie...",
+  'loadFailed': "Nie udało się pobrać historii.",
+  'entryLoadFailed': "Nie udało się pobrać szczegółów.",
+  'chunkLoadFailed': "Nie udało się pobrać fragmentu.",
+  'noChunks': "Brak powiązanych fragmentów.",
+  'spamFlagTrue': "Oznaczone jako spam",
+  'spamFlagFalse': "Wiarygodne",
+  'tokens': "tokenów",
+  'matchedQuery': "Dopasowane zapytanie",
+  'rerankScore': "Wynik rerankera",
+  'vectorScore': "Wynik wektora",
+  'sourceUser': "Użytkownik",
+  'sourceAddress': "Adres",
+  'importance': "Ważność",
+  'fragment': "Fragment",
+  'pointId': "Identyfikator punktu",
+  'preview': "Podgląd",
+  'viewResponse': "Pokaż odpowiedź",
+  'refreshSuccess': "Odświeżono historię",
+  'filtersReset': "Przywrócono domyślne filtry",
+  'dateError': "Data "Od" nie może być późniejsza niż "Do"",
+  'labelDate': "Data",
+  'labelSource': "Źródło",
+  'labelTokens': "Tokeny",
+  'labelSpam': "Spam",
+  'labelFiles': "Pliki",
+  'labelFile': "Plik",
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/project_history.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}
+

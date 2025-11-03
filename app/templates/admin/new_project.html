@@ -1,0 +1,67 @@
+﻿{% extends "base.html" %}
+
+{% block title %}{{ _('NexuSphere - Nowy Projekt - Panel Administratora') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-10 col-lg-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">{{ _('Admin') }}</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.projects') }}">{{ _('Projekty') }}</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ _('Nowy Projekt') }}</li>
+                </ol>
+            </nav>
+
+            <div class="ui-panel">
+                <div class="ui-panel-header d-flex align-items-center">
+                    <i class="material-icons me-2">add</i>
+                    <h5 class="mb-0">{{ _('Utwórz Nowy Projekt') }}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="ui-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">{{ _('Nazwa Projektu') }} *</label>
+                            <input type="text" id="name" name="name" class="form-control" required placeholder="{{ _('np. Obsługa Klienta, Zarządzanie Budynkiem') }}">
+                            <div class="form-text">{{ _('Krótka, opisowa nazwa projektu') }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">{{ _('Opis') }}</label>
+                            <textarea id="description" name="description" class="form-control" rows="4" placeholder="{{ _('Opcjonalny opis projektu, jego celów i zakresu działania...') }}"></textarea>
+                            <div class="form-text">{{ _('Szczegółowy opis pomoże użytkownikom zrozumieć cel projektu') }}</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">{{ _('Domyślny styl odpowiedzi') }}</label>
+                            <select name="response_style" class="form-select">
+                                <option value="standard" selected>{{ _('Standard') }}</option>
+                                <option value="formal">{{ _('Formal') }}</option>
+                                <option value="casual">{{ _('Casual') }}</option>
+                            </select>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin.projects') }}" class="btn btn-outline-secondary"><i class="material-icons me-1">arrow_back</i> {{ _('Powrót') }}</a>
+                            <button type="submit" class="btn btn-primary"><i class="material-icons me-1">save</i> {{ _('Utwórz Projekt') }}</button>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="i18n-new-project" type="application/json">{{ {
+  'autoNameHint': "Nazwa automatycznie podpowiedziana na podstawie kontekstu"
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/admin_new_project.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}

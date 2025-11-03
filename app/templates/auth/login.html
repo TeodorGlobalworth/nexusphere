@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}NexuSphere - {{ _('Logowanie') }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-6 col-lg-5">
+            <div class="ui-panel mt-5">
+                <div class="d-flex flex-column align-items-center text-center pt-4 pb-2">
+                    <img src="{{ url_for('static', filename='favicon.svg') }}" alt="NexuSphere" width="150" height="150" class="mb-2"/>
+                    <h5 class="mb-0">NexuSphere</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text">{{ _('Podaj dane do logowania') }}</p>
+                    <form method="POST" action="{{ url_for('auth.login') }}" class="ui-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">{{ _('Email') }}</label>
+                            <input type="email" id="email" name="email" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">{{ _('Hasło') }}</label>
+                            <input type="password" id="password" name="password" class="form-control" required>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                            <label class="form-check-label" for="remember">{{ _('Zapamiętaj mnie') }}</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">{{ _('Zaloguj się') }}</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

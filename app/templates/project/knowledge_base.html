@@ -1,0 +1,282 @@
+﻿{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - {{ _('Baza Wiedzy') }}{% endblock %}
+
+{% block extra_css %}{% endblock %}
+
+{# use global get_file_icon registered in app.__init__ #}
+
+{% block content %}
+<div class="container-fluid px-4 knowledge-base-wrapper" data-project-public-id="{{ project.public_id }}">
+<!-- Header -->
+<div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h1 class="h3 mb-0">{{ _('Baza Wiedzy') }}</h1>
+        <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="btn btn-outline-secondary"><i class="material-icons me-1">arrow_back</i> {{ _('Powrót') }}</a>
+    </div>
+    <div class="col-12">
+        <p class="mb-0">{{ Zarządzaj plikami i dokumentami dla projektu. }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12 col-md-8">
+        <div class="ui-panel ui-gallery">
+            <div class="ui-panel-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fw-semibold">{{ _('Pliki wiedzy') }}</span>
+                </div>
+                <div class="ms-auto minw-240">
+                    <input type="text" id="searchFiles" class="form-control form-control-sm" placeholder="{{ Filtruj po nazwie... }}" aria-label="{{ _('Filtruj po nazwie pliku') }}">
+                </div>
+            </div>
+
+            <!-- Error Log Modal -->
+            <div class="modal fade" id="errorLogModal" tabindex="-1" aria-labelledby="errorLogModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="errorLogModalLabel">{{ _('Logi przetwarzania pliku') }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Zamknij') }}"></button>
+                        </div>
+                        <div class="modal-body" id="errorLogBody">
+                            <!-- dynamic -->
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ui-panel-body p-0">
+                {% if knowledge_files %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle kb-table" id="filesTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="col-icon"></th>
+                                <th class="text-center col-type">{{ _('Typ') }}</th>
+                                <th class="text-center col-status">{{ _('Status') }}</th>
+                                <th class="text-center col-frags">{{ _('Fragmenty') }}</th>
+                                <th class="text-center col-size">{{ _('Rozmiar') }}</th>
+                                <th class="text-center nowrap col-dates">{{ _('Daty') }}</th>
+                                <th class="text-center col-actions">{{ _('Akcje') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for file in knowledge_files %}
+                            <tr class="kb-file-header" data-file-id="{{ file.id }}">
+                                <td colspan="7" class="border-0 pb-1">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-2 size-40 flex-fixed-40">
+                                            <i class="material-icons fs-6">{{ get_file_icon(file.file_type) }}</i>
+                                        </div>
+                                        {% set _fname = file.original_filename or '' %}
+                                        {% if _fname|length > 100 %}
+                                            <a class="kb-filename fw-semibold fs-08 maxw-760 text-decoration-none text-info" href="{{ url_for('project.download_knowledge_file', project_public_id=project.public_id, file_id=file.id) }}" title="{{ _('Pobierz plik') }}: {{ _fname }}">{{ _fname[:97] ~ '...' }}</a>
+                                        {% else %}
+                                            <a class="kb-filename fw-semibold fs-08 maxw-760 text-decoration-none text-info" href="{{ url_for('project.download_knowledge_file', project_public_id=project.public_id, file_id=file.id) }}" title="{{ _('Pobierz plik') }}: {{ _fname }}">{{ _fname }}</a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="kb-file-detail" data-file-id="{{ file.id }}">
+                                <td class="col-icon placeholder-cell"></td>
+                                <td class="text-center col-type"><span class="badge bg-light text-dark">{{ file.file_type.upper() }}</span></td>
+                                <td class="text-center col-status">
+                                    {% if file.status == 'uploaded' %}<span class="badge bg-warning text-white">{{ _('Oczekuje') }}</span>{% endif %}
+                                    {% if file.status == 'processing' %}<span class="badge bg-info text-white">{{ _('Przetwarzanie') }}</span>{% endif %}
+                                    {% if file.status == 'processed' %}<span class="badge bg-success text-white">{{ _('Gotowy') }}</span>{% endif %}
+                                    {% if file.status == 'error' %}<span class="badge bg-danger text-white">{{ _('Błąd') }}</span>{% endif %}
+                                    {% if file.status == 'error' and file.error_message %}<br><small class="text-danger">{{ file.error_message[:40] }}...</small>{% endif %}
+                                </td>
+                                <td class="text-center col-frags">{{ file.chunks_count or 0 }}</td>
+                                <td class="text-center col-size">{{ file.get_size_formatted() }}</td>
+                                <td class="text-center nowrap col-dates">
+                                    <small class="text-muted nowrap" data-local-dt="{{ file.uploaded_at.isoformat() }}">{{ file.uploaded_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                    {% if file.processed_at %}<br><small class="text-success nowrap" data-local-dt="{{ file.processed_at.isoformat() }}">{{ file.processed_at.strftime('%d.%m.%Y %H:%M') }}</small>{% endif %}
+                                </td>
+                                <td class="text-center col-actions">
+                                    {% if file.status == 'processed' %}
+                                    <button class="btn btn-sm btn-primary me-1 preview-file-btn" data-file-id="{{ file.id }}" data-bs-toggle="modal" data-bs-target="#previewModal" title="{{ _('Podgląd') }}">
+                                        <i class="material-icons">visibility</i>
+                                    </button>
+                                    <a class="btn btn-sm btn-success me-1" href="{{ url_for('project.download_knowledge_file', project_public_id=project.public_id, file_id=file.id) }}" title="{{ _('Pobierz') }}">
+                                        <i class="material-icons">download</i>
+                                    </a>
+                                    {% endif %}
+                                    {% if file.file_type.lower() == 'pdf' %}
+                                    <button class="btn btn-sm btn-warning me-1 force-full-ocr-btn" data-file-id="{{ file.id }}" title="{{ Wymuś Pełny OCR (jednorazowo) }}">
+                                        <i class="material-icons">scanner</i>
+                                    </button>
+                                    {% endif %}
+                                    {% if file.status == 'error' %}
+                                    <button class="btn btn-sm btn-secondary me-1 view-error-btn" data-file-id="{{ file.id }}" title="{{ _('Szczegóły błędu') }}" data-bs-toggle="modal" data-bs-target="#errorLogModal">
+                                        <i class="material-icons">error_outline</i>
+                                    </button>
+                                    <button class="btn btn-sm btn-warning me-1 retry-processing-btn" data-file-id="{{ file.id }}" title="{{ _('Ponów przetwarzanie') }}">
+                                        <i class="material-icons">refresh</i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-danger delete-file-btn" data-file-id="{{ file.id }}" title="{{ _('Usuń') }}">
+                                        <i class="material-icons">delete</i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-5 text-center">
+                    <i class="material-icons display-4">folder_open</i>
+                    <h4 class="mt-3">{{ _('Baza wiedzy jest pusta') }}</h4>
+                    <p class="text-center">
+                        {{ Prześlij pierwsze dokumenty, aby rozpocząć budowanie bazy wiedzy. }}<br>
+                        {{ Pliki będą automatycznie przetwarzane i indeksowane dla AI. }}
+                    </p>
+                    <button class="btn btn-primary btn-lg" id="uploadFirstBtn">
+                        <i class="material-icons me-1">file_upload</i> {{ _('Prześlij Pierwszy Plik') }}
+                    </button>
+                </div>
+                {% endif %}
+                {% if pagination %}
+                <div class="p-3 d-flex justify-content-center">
+                    <nav aria-label="{{ _('Paginacja plików') }}">
+                        <ul class="pagination mb-0">
+                            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}"><a class="page-link" href="{{ url_for('project.knowledge_base', project_public_id=project.public_id, page=pagination.prev_num) }}">«</a></li>
+                            <li class="page-item active"><span class="page-link">{{ pagination.page }}</span></li>
+                            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}"><a class="page-link" href="{{ url_for('project.knowledge_base', project_public_id=project.public_id, page=pagination.next_num) }}">»</a></li>
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4 kb-side-col">
+        <div class="ui-panel mb-3 project-tile">
+            <div class="ui-panel-header">{{ _('Prześlij pliki') }}</div>
+            <div class="ui-panel-body">
+                <form id="uploadForm" method="post" action="{{ url_for('project.upload_knowledge_file', project_public_id=project.public_id) }}" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}" />
+                    {# Single unified drop zone acting as the visible trigger #}
+                    {% set _accept = allowed_extensions | map('lower') | map('trim') | list %}
+                    {% set accept_list = [] %}
+                    {% for ext in _accept %}
+                        {% if ext.startswith('.') %}
+                            {% set _ = accept_list.append(ext) %}
+                        {% else %}
+                            {% set _ = accept_list.append('.' ~ ext) %}
+                        {% endif %}
+                    {% endfor %}
+                    <input type="file" name="file" id="fileInput" class="d-none" multiple accept="{{ accept_list | join(',') }}">
+                    <div class="border rounded p-3 text-center mb-3 cursor-pointer" id="dropZone" role="button" tabindex="0" aria-label="{{ _('Kliknij lub upuść pliki aby dodać do bazy wiedzy') }}">
+                        <i class="material-icons d-block mb-1">cloud_upload</i>
+                        <span class="small">{{ Przeciągnij i upuść pliki tutaj lub kliknij aby wybrać. }}</span><br>
+                        <small class="d-block mt-1">{{ Dozwolone: }} {{ allowed_extensions | join(', ') }} · {{ Limit łączny: 100 MB }}</small>
+                    </div>
+                    <div id="uploadProgress" class="mb-2 d-none">
+                        <div class="progress">
+                            <div id="progressBar" class="progress-bar bg-primary" role="progressbar" data-initial-width="0"></div>
+                        </div>
+                        <small id="uploadStatus" class="text-center">{{ Trwa przesyłanie... }}</small>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2 w-100">
+                        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('project.download_xlsx_template', project_public_id=project.public_id) }}">
+                            <i class="material-icons align-middle me-1">download</i> {{ _('Szablon Excel') }}
+                        </a>
+                        <div class="form-check m-0 d-flex align-items-center">
+                            <input class="form-check-input me-1" type="checkbox" value="1" id="forceFullOcrChk" name="force_full_ocr" title="{{ Pełny OCR: każda strona PDF wysyłana do AI – duży koszt tokenów, używaj tylko do trudnych skanów. }}">
+                            <label class="form-check-label small" for="forceFullOcrChk" title="{{ Pełny OCR: każda strona PDF wysyłana do AI – duży koszt tokenów, używaj tylko do trudnych skanów. }}">{{ _('Pełny OCR') }}</label>
+                        </div>
+                    </div>
+                    <small class="d-block mt-1">{{ Dozwolone typy plików: }} {{ allowed_extensions | join(', ') }}</small>
+                </form>
+            </div>
+        </div>
+
+    <div class="row project-stats">
+            <div class="col-12 mb-3">
+                <div class="ui-panel text-center h-100">
+                    <div class="card-body">
+                        <h3 class="text-success">{{ processed_files|length }}</h3>
+                        <small class="text-center">{{ _('Przetworzonych') }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 mb-3">
+                <div class="ui-panel text-center h-100">
+                    <div class="card-body">
+                        <h3 class="text-info">{{ knowledge_files|length }}</h3>
+                        <small class="text-center">{{ _('Plików w bazie') }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+</div> <!-- /.container-fluid -->
+
+<!-- File Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="previewModalLabel">{{ _('Podgląd Pliku') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Zamknij') }}"></button>
+            </div>
+            <div class="modal-body" id="previewContent">
+                <!-- Content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- i18n payload for knowledge-base scripts (parsed at runtime) -->
+<script id="i18n-knowledge" type="application/json">{{ {
+    'duplicateConfirm': "Plik "{filename}" już istnieje (id: {id}). Czy chcesz podmienić ten plik?",
+    'uploadFinished': "Przesyłanie zakończone. Odświeżanie strony...",
+    'uploadingItem': "Przesyłanie {i}/{n}: {name}",
+    'noFileSelected': "Nie wybrano pliku.",
+    'totalSizeExceeded': "Łączna wielkość plików przekracza 100 MB. Wybierz mniejszy zestaw.",
+    'statusUploaded': "Oczekuje",
+    'statusProcessing': "Przetwarzanie",
+    'statusProcessed': "Gotowy",
+    'statusError': "Błąd",
+    'previewTitle': "Podgląd",
+    'retryTitle': "Ponów przetwarzanie",
+    'errorDetailsTitle': "Szczegóły błędu",
+    'confirmFullOcrUpload': "Pełny OCR prześle każdą stronę PDF do AI – może zużyć dużo tokenów. Kontynuować?",
+    'confirmForceFullOcrFile': "Wymuszenie pełnego OCR spowoduje OCR każdej strony – kontynuować?",
+    'forceFullOcrTitle': "Wymuś Pełny OCR (jednorazowo)",
+    'deleteTitle': "Usuń",
+    'deletingFile': "Usuwanie pliku...",
+    'fileDeleted': "Plik usunięty",
+    'networkDeleteError': "Błąd sieci podczas usuwania pliku",
+    'genericDeleteError': "Nie udało się usunąć pliku",
+    'confirmDelete': "Czy na pewno chcesz usunąć ten plik? Ta operacja jest nieodwracalna.",
+    'confirmDeleteShort': "Usuń plik?",
+    'previewLoading': "Ładowanie podglądu...",
+    'loading': "Ładowanie...",
+    'previewPending': "Podgląd pliku będzie dostępny wkrótce.",
+    'previewError': "Błąd podglądu",
+    'retryProcessingStarted': "Ponowne przetwarzanie zostało rozpoczęte",
+    'retryConfirm': "Czy chcesz ponownie przetworzyć ten plik?",
+    'fullOcrConfirmFile': "Pełny OCR może być kosztowny. Kontynuować?",
+    'toastRemoved': "Usunięto",
+    'toastError': "Błąd",
+    'logFetchError': "Błąd pobierania logów",
+    'logFetchErrorShort': "Błąd pobierania",
+    'loadingGeneric': "Ładowanie..."
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/knowledge_base.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}

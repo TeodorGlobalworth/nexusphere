@@ -1,0 +1,108 @@
+﻿{% extends "base.html" %}
+
+{% block title %}NexuSphere - {{ _('Projekty - Panel Administratora') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="row mb-3">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h1 class="h3 mb-0">{{ _('Zarządzanie Projektami') }}</h1>
+            <div class="d-flex flex-wrap gap-2">
+                {% if projects %}
+                    {% set first_org_id = projects[0].organization_id %}
+                    {% set show_org_report = current_user.is_superadmin or (current_user.is_admin and current_user.organization_id and first_org_id and current_user.organization_id == first_org_id) %}
+                    {% if show_org_report %}
+                    <button type="button" id="orgReportTrigger" class="btn btn-warning text-dark d-flex align-items-center" data-base-url="{{ url_for('project.organization_email_generation_report', org_id=first_org_id) if first_org_id else '' }}">
+                        <i class="material-icons me-1">description</i> {{ _('Raport zużycia (Org)') }}
+                    </button>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if projects %}
+<div class="ui-gallery projects-gallery px-4">
+    <div class="row mb-2">
+        <div class="col-12 col-md-6 col-lg-4">
+            <input id="projectFilterInput" type="text" class="form-control" placeholder="{{ _('Filtruj projekty') }}" aria-label="{{ _('Filtruj projekty') }}">
+        </div>
+    </div>
+    <div class="project-grid row row-cols-1 row-cols-sm-2 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-3 g-lg-4">
+        {% for project in projects %}
+        <div class="col project-card" data-project-name="{{ project.name|lower }}">
+            <div class="project-tile d-flex flex-column h-100">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="project-name"><strong>{{ project.name }}</strong></div>
+                            <div class="small mt-1">{{ project.context }}</div>
+                        </div>
+                        <div class="text-end d-flex align-items-center gap-2">
+                            <a href="#" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#projDetails{{ project.public_id }}">{{ _('Szczegóły') }}</a>
+                            <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="btn btn-sm btn--projekty">{{ _('Otwórz') }}</a>
+                        </div>
+                    </div>
+
+                    <div class="collapse mt-3" id="projDetails{{ project.public_id }}">
+                        <div class="project-details">
+                            <p class="mb-2">{{ project.description or "Brak opisu" }}</p>
+                            <p class="text-muted small mb-3">{{ _('Utworzony') }}: <span data-local-dt="{{ project.created_at.isoformat() }}" data-only-date>{{ project.created_at.strftime('%d.%m.%Y') }}</span></p>
+                            <button class="btn btn-sm btn-outline-danger" data-action="delete-project" data-project-id="{{ project.public_id }}"><i class="material-icons me-1">delete</i> {{ _('Usuń') }}</button>
+                        </div>
+                    </div>
+                </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if pagination %}
+    <div class="row">
+        <div class="col-12 d-flex justify-content-center">
+            <nav aria-label="{{ _('Paginacja projektów') }}">
+                <ul class="pagination">
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}"><a class="page-link" href="{{ url_for('admin.projects', page=pagination.prev_num) }}">«</a></li>
+                    <li class="page-item active"><span class="page-link">{{ pagination.page }}</span></li>
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}"><a class="page-link" href="{{ url_for('admin.projects', page=pagination.next_num) }}">»</a></li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="material-icons display-4 large">folder_open</i>
+    <h3 class="text">{{ _('Brak projektów') }}</h3>
+    <p class="text">{{ _('Utwórz pierwszy projekt, aby rozpocząć pracę z systemem.') }}</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script id="i18n-projects" type="application/json">{{ {
+  'confirmDelete': "Czy na pewno chcesz usunąć ten projekt? Ta operacja jest nieodwracalna.",
+  'deletingProject': "Usuwanie projektu...",
+  'projectDeleted': "Projekt został usunięty",
+  'error': "Błąd",
+  'deleteFailed': "Nie udało się usunąć projektu",
+  'networkErrorDelete': "Błąd sieci podczas usuwania projektu",
+  'noReportUrl': "Brak adresu raportu",
+  'mfaPrompt': "Podaj 6-cyfrowy kod MFA, aby potwierdzić usunięcie projektu:",
+  'mfaInvalid': "Operacja anulowana: nieprawidłowy kod MFA",
+  'reportRange': "Zakres raportu",
+  'close': "Zamknij",
+  'from': "Od",
+  'to': "Do",
+  'quickRanges': "Szybkie zakresy",
+  'prevMonth': "Poprzedni miesiąc",
+  'prev3Months': "Poprzednie 3 miesiące",
+  'allHint': "Pozostaw puste aby pobrać wszystkie dane.",
+  'clear': "Wyczyść",
+  'cancel': "Anuluj",
+  'generate': "Generuj"
+}|tojson }}</script>
+<script id="mfa-flag" type="application/json">{{ {'mfa': (1 if current_user.mfa_enabled else 0) }|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/admin_projects.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}
+
+{# duplicate script block removed; deleteProject defined earlier #}

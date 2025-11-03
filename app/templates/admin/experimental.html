@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Eksperymentalne narzędzia') }}{% endblock %}
+
+{% block content %}
+<div class="admin-experimental container-fluid px-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">{{ _('Eksperymentalne narzędzia AI') }}</h1>
+      <p class="mb-0 text-muted">{{ _('Uruchamiaj pełen pipeline odpowiedzi lub sam etap wyszukiwania i rerankingu dla szybkich eksperymentów.') }}</p>
+    </div>
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="material-icons me-1">arrow_back</i>{{ _('Powrót do panelu') }}
+    </a>
+  </div>
+
+  <div class="ui-panel mb-4">
+    <div class="card-body">
+      <form id="experimental-form" class="d-flex flex-column gap-4">
+        <div class="row g-3">
+          <div class="col-12 col-lg-6">
+            <label for="exp-org" class="form-label">{{ _('Organizacja') }}</label>
+            <select id="exp-org" class="form-select">
+              <option value="">{{ _('Wybierz organizację') }}</option>
+              {% for org in organizations %}
+                <option value="{{ org.id }}" {% if active_org_id and org.id == active_org_id %}selected{% endif %}>{{ org.name }}{% if org.slug %} ({{ org.slug }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">{{ _('Zacznij od wyboru organizacji, aby zawęzić listę projektów.') }}</div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <label for="exp-project" class="form-label">{{ _('Projekt') }}</label>
+            <select id="exp-project" class="form-select">
+              <option value="">{{ _('Najpierw wybierz organizację') }}</option>
+            </select>
+            <div class="form-text">{{ _('Lista projektów uaktualni się automatycznie po wyborze organizacji.') }}</div>
+          </div>
+        </div>
+
+        <div>
+          <label for="exp-email" class="form-label">{{ _('Treść wejściowa (email / zapytanie)') }}</label>
+          <textarea id="exp-email" class="form-control" rows="8" placeholder="{{ _('Wklej tutaj treść, którą chcesz przetworzyć…') }}"></textarea>
+          <div class="form-text">{{ _('Tekst zostanie wykorzystany do wyszukania kontekstu oraz (opcjonalnie) wygenerowania odpowiedzi.') }}</div>
+        </div>
+
+        <div class="row row-cols-1 row-cols-xl-2 g-4">
+          <div class="col d-flex">
+            <div class="border border-light-subtle rounded-3 p-3 w-100">
+              <h2 class="h6 text-uppercase mb-3">{{ _('Vector') }}</h2>
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label for="exp-context-limit-input" class="form-label">{{ _('Limit kontekstu') }}</label>
+                  <input type="number" min="1" max="50" class="form-control" id="exp-context-limit-input" placeholder="6">
+                  <div class="form-text">{{ _('Docelowa liczba dokumentów umieszczanych w promptcie.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-vector-topk" class="form-label">{{ _('Vector top-k') }}</label>
+                  <input type="number" min="1" max="50" class="form-control" id="exp-vector-topk" placeholder="6">
+                  <div class="form-text">{{ _('Ile fragmentów pobierać z Qdrant przed rerankingiem.') }}</div>
+                </div>
+                <div class="col-12">
+                  <label for="exp-retrieval-threshold" class="form-label">{{ _('Próg wektorowy') }}</label>
+                  <input type="number" step="0.01" class="form-control" id="exp-retrieval-threshold" placeholder="0">
+                  <div class="form-text">{{ _('Odrzuć wyniki poniżej tej wartości podobieństwa (opcjonalnie). Pozostaw puste aby użyć domyślnego progu 0.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-prefetch-limit" class="form-label">{{ _('Prefetch limit') }}</label>
+                  <input type="number" min="1" max="400" class="form-control" id="exp-prefetch-limit" placeholder="{{ config.get('PREFETCH_LIMIT', 20) }}">
+                  <div class="form-text">{{ _('Łączna liczba wyników pobieranych z każdego kanału przed scaleniem RRF.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-colbert-candidates" class="form-label">{{ _('ColBERT candidates') }}</label>
+                  <input type="number" min="1" max="400" class="form-control" id="exp-colbert-candidates" placeholder="{{ config.get('COLBERT_CANDIDATES', 15) }}">
+                  <div class="form-text">{{ _('Limit wyników pozyskiwanych z kanału ColBERT przy scalaniu hybrydowym.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-hybrid-rrf-k" class="form-label">{{ _('Parametr RRF k') }}</label>
+                  <input type="number" min="1" max="1000" class="form-control" id="exp-hybrid-rrf-k" placeholder="{{ config.get('HYBRID_RRF_K', 60) }}">
+                  <div class="form-text">{{ _('Wartość k używana podczas fuzji wyników metodą Reciprocal Rank Fusion.') }}</div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">{{ _('Wagi RRF') }}</label>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-4">
+                      <input type="number" step="0.01" class="form-control" id="exp-rrf-weight-dense" placeholder="{{ config.get('RRF_DENSE_WEIGHT', 0.6) }}">
+                      <div class="form-text">{{ _('Waga kanału dense.') }}</div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <input type="number" step="0.01" class="form-control" id="exp-rrf-weight-lexical" placeholder="{{ config.get('RRF_SPARSE_WEIGHT', 0.3) }}">
+                      <div class="form-text">{{ _('Waga kanału lexical/sparse.') }}</div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <input type="number" step="0.01" class="form-control" id="exp-rrf-weight-colbert" placeholder="{{ config.get('RRF_COLBERT_WEIGHT', 0.1) }}">
+                      <div class="form-text">{{ _('Waga kanału ColBERT.') }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col d-flex">
+            <div class="border border-light-subtle rounded-3 p-3 w-100">
+              <h2 class="h6 text-uppercase mb-3">{{ _('Multi-query') }}</h2>
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label for="exp-multiquery-mode" class="form-label">{{ _('Tryb multi-query') }}</label>
+                  <select id="exp-multiquery-mode" class="form-select">
+                    <option value="inherit">{{ _('Domyślne ustawienie organizacji') }}</option>
+                    <option value="force_on">{{ _('Wymuś włączenie') }}</option>
+                    <option value="force_off">{{ _('Wymuś wyłączenie') }}</option>
+                  </select>
+                  <div class="form-text">{{ _('Zdecyduj czy generować warianty zapytań niezależnie od konfiguracji projektu.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-multiquery-variants" class="form-label">{{ _('Liczba wariantów') }}</label>
+                  <input type="number" min="1" max="12" class="form-control" id="exp-multiquery-variants" placeholder="4">
+                  <div class="form-text">{{ _('Ile alternatywnych zapytań wygenerować (przed deduplikacją).') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-multiquery-aggregate-limit" class="form-label">{{ _('Limit agregacji (post-deduplikacja)') }}</label>
+                  <input type="number" min="1" max="100" class="form-control" id="exp-multiquery-aggregate-limit" placeholder="6">
+                  <div class="form-text">{{ _('Maksymalna liczba fragmentów przekazywana dalej po scaleniach.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-multiquery-model-select" class="form-label">{{ _('Model multi-query') }}</label>
+                  <div class="input-group">
+                    <select id="exp-multiquery-model-select" class="form-select">
+                      <option value="">{{ _('Domyślne ustawienie (konfiguracja projektu)') }}</option>
+                      <option value="gpt-5-mini">gpt-5-mini</option>
+                      <option value="gpt-5-nano">gpt-5-nano</option>
+                      <option value="gpt-5.1-mini">gpt-5.1-mini</option>
+                      <option value="gpt-5.1-nano">gpt-5.1-nano</option>
+                      <option value="__custom__">{{ _('Własna wartość…') }}</option>
+                    </select>
+                    <input type="text" class="form-control d-none" id="exp-multiquery-model-custom" placeholder="gpt-5-mini" disabled>
+                  </div>
+                  <div class="form-text">{{ _('Opcjonalny model do generowania wariantów – nadpisze ustawienia projektu.') }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col d-flex">
+            <div class="border border-light-subtle rounded-3 p-3 w-100">
+              <h2 class="h6 text-uppercase mb-3">{{ _('Reranking') }}</h2>
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label for="exp-rerank-provider-select" class="form-label">{{ _('Dostawca rerankera') }}</label>
+                  <div class="input-group">
+                    <select id="exp-rerank-provider-select" class="form-select">
+                      <option value="inherit">{{ _('Domyślne ustawienie') }}</option>
+                      <option value="none">{{ _('Wyłącz reranking') }}</option>
+                      <option value="zeroentropy">ZeroEntropy</option>
+                      <option value="novita">NovitaAI</option>
+                      <option value="__custom__">{{ _('Własna wartość…') }}</option>
+                    </select>
+                    <input type="text" class="form-control d-none" id="exp-rerank-provider-custom" placeholder="np. moj-reranker" disabled>
+                  </div>
+                  <div class="form-text">{{ _('Wybierz dostawcę lub podaj własny identyfikator usługi.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-rerank-model-select" class="form-label">{{ _('Model rerankera') }}</label>
+                  <div class="input-group">
+                    <select id="exp-rerank-model-select" class="form-select">
+                      <option value="">{{ _('Domyślne ustawienie dostawcy') }}</option>
+                      <option value="zerank-1">zerank-1</option>
+                      <option value="zerank-1-lite">zerank-1-lite</option>
+                      <option value="qwen/qwen3-reranker-8b">qwen/qwen3-reranker-8b</option>
+                      <option value="qwen/qwen3-reranker-14b">qwen/qwen3-reranker-14b</option>
+                      <option value="__custom__">{{ _('Własna wartość…') }}</option>
+                    </select>
+                    <input type="text" class="form-control d-none" id="exp-rerank-model-custom" placeholder="np. moj-model" disabled>
+                  </div>
+                  <div class="form-text">{{ _('Opcjonalny identyfikator modelu przekazywany do dostawcy lub autorska wartość.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-rerank-topk" class="form-label">{{ _('Rerank top-k') }}</label>
+                  <input type="number" min="1" max="50" class="form-control" id="exp-rerank-topk" placeholder="6">
+                  <div class="form-text">{{ _('Maksymalna liczba dokumentów zwracanych przez reranker.') }}</div>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="exp-rerank-threshold" class="form-label">{{ _('Próg rerankera') }}</label>
+                  <input type="number" step="0.01" class="form-control" id="exp-rerank-threshold" placeholder="0.25">
+                  <div class="form-text">{{ _('Odrzuć wyniki poniżej progu (pozostaw puste, aby użyć ustawień projektu).') }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col d-flex">
+            <div class="border border-light-subtle rounded-3 p-3 w-100">
+              <h2 class="h6 text-uppercase mb-3">{{ _('AI') }}</h2>
+              <div class="row g-3">
+                <div class="col-12">
+                  <label for="exp-style" class="form-label">{{ _('Styl / temperatura') }}</label>
+                  <select id="exp-style" class="form-select">
+                    <option value="default">{{ _('Domyślna konfiguracja projektu') }}</option>
+                    <option value="balanced">{{ _('Zbalansowany') }}</option>
+                    <option value="creative">{{ _('Kreatywny') }}</option>
+                    <option value="precise">{{ _('Precyzyjny') }}</option>
+                    <option value="formal">{{ _('Formalny') }}</option>
+                  </select>
+                  <div class="form-text">{{ _('Wskazówka wpływająca na temperaturę oraz ton generowanej odpowiedzi.') }}</div>
+                </div>
+                <div class="col-12">
+                  <label for="exp-response-model-select" class="form-label">{{ _('Model odpowiedzi') }}</label>
+                  <div class="input-group">
+                    <select class="form-select" id="exp-response-model-select">
+                      <option value="">{{ _('Domyślne ustawienie (konfiguracja projektu)') }}</option>
+                      <option value="gpt-5-mini">gpt-5-mini</option>
+                      <option value="gpt-5-nano">gpt-5-nano</option>
+                      <option value="gpt-5.1-mini">gpt-5.1-mini</option>
+                      <option value="gpt-5.1-nano">gpt-5.1-nano</option>
+                      <option value="__custom__">{{ _('Własna wartość…') }}</option>
+                    </select>
+                    <input type="text" class="form-control d-none" id="exp-response-model-custom" placeholder="gpt-5-mini" disabled>
+                  </div>
+                  <div class="form-text">{{ _('Nadpisz model odpowiedzi – pozostaw puste, aby użyć ustawień projektu.') }}</div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="exp-include-neighbor-chunks">
+                    <label class="form-check-label" for="exp-include-neighbor-chunks">
+                      {{ _('Dodaj sąsiadujące fragmenty, jeśli wybrano tylko jeden') }}
+                    </label>
+                  </div>
+                  <div class="form-text">
+                    {{ _('Jeśli po rerankingu zostanie wybrany tylko jeden fragment, system automatycznie doda fragmenty sąsiadujące (z tego samego pliku, jeśli są dostępne) do promptu generowania odpowiedzi.') }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" data-mode="full">
+            <i class="material-icons me-1">smart_toy</i>{{ _('Uruchom pełną generację') }}
+          </button>
+          <button type="button" class="btn btn-outline-primary" data-mode="search_only">
+            <i class="material-icons me-1">travel_explore</i>{{ _('Tylko wyszukiwanie + reranking') }}
+          </button>
+          <button type="button" class="btn btn-outline-secondary ms-auto" id="exp-clear">
+            <i class="material-icons me-1">clear</i>{{ _('Wyczyść wejście') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="experimental-result" class="ui-panel d-none">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-info text-uppercase" id="exp-mode-label"></span>
+        <span class="badge bg-secondary" id="exp-tokens-badge"></span>
+      </div>
+      <div class="small">{{ _('Panel wyników eksperymentu') }}</div>
+    </div>
+    <div class="card-body">
+      <div id="exp-alert" class="alert alert-info" role="alert"></div>
+
+      <div id="exp-response-wrapper" class="mb-4 d-none">
+        <h3 class="h6 text-uppercase mb-2">{{ _('Wygenerowana odpowiedź') }}</h3>
+        <div class="border border-light-subtle rounded-3 p-3">
+          <pre id="exp-response" class="small mb-0"></pre>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-12 col-xl-6">
+          <div class="border border-light-subtle rounded-3 p-3 h-100">
+            <h3 class="h6 text-uppercase mb-3">{{ _('Podsumowanie ustawień') }}</h3>
+            <dl class="row mb-0 small">
+              <dt class="col-5">{{ _('Multi-query włączone') }}</dt>
+              <dd class="col-7" id="exp-multiquery-used">—</dd>
+              <dt class="col-5">{{ _('Warianty multi-query') }}</dt>
+              <dd class="col-7" id="exp-multiquery-variants">—</dd>
+              <dt class="col-5">{{ _('Tryb multi-query') }}</dt>
+              <dd class="col-7" id="exp-multiquery-mode-display">—</dd>
+              <dt class="col-5">{{ _('Model multi-query') }}</dt>
+              <dd class="col-7" id="exp-multiquery-model-display">—</dd>
+              <dt class="col-5">{{ _('Limit agregacji') }}</dt>
+              <dd class="col-7" id="exp-multiquery-aggregate-display">—</dd>
+              <dt class="col-5">{{ _('Zapytanie rerankera') }}</dt>
+              <dd class="col-7" id="exp-rerank-query">—</dd>
+              <dt class="col-5">{{ _('Limit kontekstu') }}</dt>
+              <dd class="col-7" id="exp-context-limit">—</dd>
+              <dt class="col-5">{{ _('Vector top-k') }}</dt>
+              <dd class="col-7" id="exp-retrieval-topk">—</dd>
+              <dt class="col-5">{{ _('Próg wektorowy') }}</dt>
+              <dd class="col-7" id="exp-retrieval-threshold-display">—</dd>
+              <dt class="col-5">{{ _('Prefetch limit') }}</dt>
+              <dd class="col-7" id="exp-prefetch-limit-display">—</dd>
+              <dt class="col-5">{{ _('ColBERT candidates') }}</dt>
+              <dd class="col-7" id="exp-colbert-candidates-display">—</dd>
+              <dt class="col-5">{{ _('Parametr RRF k') }}</dt>
+              <dd class="col-7" id="exp-rrf-k-display">—</dd>
+              <dt class="col-5">{{ _('Wagi RRF') }}</dt>
+              <dd class="col-7" id="exp-rrf-weights-display">—</dd>
+              <dt class="col-5">{{ _('Dostawca rerankera') }}</dt>
+              <dd class="col-7" id="exp-rerank-provider-display">—</dd>
+              <dt class="col-5">{{ _('Model rerankera') }}</dt>
+              <dd class="col-7" id="exp-rerank-model-display">—</dd>
+              <dt class="col-5">{{ _('Rerank top-k') }}</dt>
+              <dd class="col-7" id="exp-rerank-topk-display">—</dd>
+              <dt class="col-5">{{ _('Próg rerankera') }}</dt>
+              <dd class="col-7" id="exp-rerank-threshold-display">—</dd>
+              <dt class="col-5">{{ _('Model odpowiedzi') }}</dt>
+              <dd class="col-7" id="exp-response-model-active">—</dd>
+              <dt class="col-5">{{ _('Styl AI (rozwiązany)') }}</dt>
+              <dd class="col-7" id="exp-resolved-style">—</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+          <div class="border border-light-subtle rounded-3 p-3 h-100">
+            <h3 class="h6 text-uppercase mb-3">{{ _('Zużycie tokenów') }}</h3>
+            <dl class="row small mb-3">
+              <dt class="col-5">{{ _('Łącznie wyszukiwanie') }}</dt>
+              <dd class="col-7" id="exp-search-tokens">—</dd>
+              <dt class="col-5">{{ _('Embedding / zapytania') }}</dt>
+              <dd class="col-7" id="exp-embedding-usage">—</dd>
+              <dt class="col-5">{{ _('Reranking') }}</dt>
+              <dd class="col-7" id="exp-rerank-usage">—</dd>
+            </dl>
+            <h4 class="h6 text-uppercase text-muted mb-2">{{ _('Tokeny według etapów') }}</h4>
+            <pre class="small mb-0" id="exp-usage-json"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="border border-light-subtle rounded-3 p-3 mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h3 class="h6 text-uppercase mb-0">{{ _('Etapy wyszukiwania dokumentów') }}</h3>
+          <span class="badge bg-dark" id="exp-search-steps-count">0</span>
+        </div>
+        <div class="table-responsive search-steps-table-wrapper">
+          <table class="table table-hover table-striped mb-0 align-middle table-sm" id="exp-search-steps-table">
+            <thead class="table-light">
+              <tr>
+                <th scope="col" class="text-nowrap">#</th>
+                <th scope="col">{{ _('Plik') }}</th>
+                <th scope="col" class="text-nowrap">{{ _('Fragment') }}</th>
+                <th scope="col">{{ _('Kategoria') }}</th>
+                <th scope="col">{{ _('Źródło wyszukiwania') }}</th>
+                <th scope="col" class="text-nowrap">{{ _('Wynik') }}</th>
+                <th scope="col" class="text-center text-nowrap">{{ _('Podgląd') }}</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-12 col-xl-7">
+          <div class="border border-light-subtle rounded-3 p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h3 class="h6 text-uppercase mb-0">{{ _('Wykorzystany kontekst') }}</h3>
+              <span class="badge bg-dark" id="exp-context-count">0</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover table-striped mb-0 align-middle table-sm context-table" id="exp-context-table">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col" class="text-nowrap">#</th>
+                    <th scope="col">{{ _('Dokument') }}</th>
+                    <th scope="col" class="text-nowrap">{{ _('Vector score') }}</th>
+                    <th scope="col" class="text-nowrap">{{ _('Rerank score') }}</th>
+                    <th scope="col">{{ _('Wariant zapytania') }}</th>
+                    <th scope="col" class="text-center text-nowrap">{{ _('Podgląd') }}</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-xl-5">
+          <div class="border border-light-subtle rounded-3 p-3 h-100">
+            <h3 class="h6 text-uppercase mb-3">{{ _('Logi wyszukiwania') }}</h3>
+            <div id="exp-vector-logs-wrapper" class="d-none">
+              <pre class="small mb-0" id="exp-vector-logs"></pre>
+            </div>
+            <div class="small text-muted" id="exp-vector-logs-placeholder">{{ _('Logi pojawią się po wykonaniu zapytania z dedykowanymi wymiarami debugowania.') }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="border border-light-subtle rounded-3 p-3 mt-4">
+        <h3 class="h6 text-uppercase mb-3">{{ _('Surowa odpowiedź API') }}</h3>
+        <pre class="small mb-0" id="exp-raw-json"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chunk preview modal (mirrors Knowledge Base modal style) -->
+<div class="modal fade" id="chunkPreviewModal" tabindex="-1" aria-labelledby="chunkPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="chunkPreviewModalLabel">{{ _('Podgląd fragmentu') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Zamknij') }}"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small mb-2" id="chunkPreviewMeta"></div>
+        <pre class="small mb-0" id="chunkPreviewContent"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="experimental-data" type="application/json">{{ {'projects': projects, 'active_org_id': active_org_id}|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ url_for('static', filename='js/pages/admin_experimental.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}

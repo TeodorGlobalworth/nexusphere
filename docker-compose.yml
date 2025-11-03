@@ -1,0 +1,92 @@
+version: "3.9"
+
+services:
+  web:
+    build: .
+    container_name: doc_search_web
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://doc_user:doc_pass@db:5432/doc_search_db
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      BGE_M3_BASE_URL: http://bge_m3:8000
+    volumes:
+      - ./data/uploads:/app/data/uploads
+    depends_on:
+      - db
+      - qdrant
+      - bge_m3
+    restart: unless-stopped
+    networks:
+      - doc_search_network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5).status<400 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: postgres:15
+    container_name: doc_search_db
+    environment:
+      - POSTGRES_DB=doc_search_db
+      - POSTGRES_USER=doc_user
+      - POSTGRES_PASSWORD=doc_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - doc_search_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doc_user -d doc_search_db -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: doc_search_qdrant
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+    restart: unless-stopped
+    networks:
+      - doc_search_network
+
+  bge_m3:
+    build:
+      context: .
+      dockerfile: docker/bge_m3/Dockerfile
+    container_name: doc_search_bge_m3
+    environment:
+      MODEL_NAME: BAAI/bge-m3
+      HF_HUB_DISABLE_SYMLINKS: "1"
+      HF_HOME: /models/huggingface
+      HUGGINGFACE_HUB_CACHE: /models/huggingface
+    volumes:
+      - bge_m3_cache:/models
+    restart: unless-stopped
+    networks:
+      - doc_search_network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  bge_m3_cache:
+
+networks:
+  doc_search_network:
+    driver: bridge

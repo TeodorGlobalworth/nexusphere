@@ -1,0 +1,176 @@
+﻿{% extends "base.html" %}
+
+{% block title %}NexuSphere - {{ _('Użytkownicy - Panel Administratora') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 users-wrapper">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h1 class="h3 mb-0">{{ _('Zarządzanie Użytkownikami') }}</h1>
+    </div>
+  </div>
+
+{% if users %}
+<div class="ui-panel ui-gallery">
+    <div class="card-body p-0">
+        <div class="p-3">
+            <div class="row g-2 align-items-center">
+                <div class="col-12 col-md-6">
+            <input id="userFilterInput" type="text" class="form-control" placeholder="{{ _('Filtruj po login, email') }}" aria-label="{{ _('Filtruj użytkowników') }}">
+                </div>
+                <div class="col-12 col-md-6">
+            <input id="projectFilterInput" type="text" class="form-control" placeholder="{{ _('Filtruj po nazwie projektu') }}" aria-label="{{ _('Filtruj po projekcie') }}">
+                </div>
+            </div>
+        <div class="small">{{ _('Wyszukiwanie obejmuje całą organizację') }}</div>
+        </div>
+        <div class="table-responsive users-table-wrapper">
+            <table class="table table-hover mb-0 align-middle users-table">
+             <thead>
+                 <tr>
+                     <th>{{ _('Użytkownik') }}</th>
+                     <th>{{ _('Rola') }}</th>
+                     <th>{{ _('Projekty') }}</th>
+                     <th>{{ _('Ostatnie logowanie') }}</th>
+                     <th>{{ _('Status') }}</th>
+                     <th>{{ _('Akcje') }}</th>
+                 </tr>
+             </thead>
+             <tbody>
+                 {% for user in users %}
+                 <tr class="user-row" data-username="{{ user.username|lower }}" data-email="{{ user.email|lower }}">
+                     <td>
+                         <div class="d-flex align-items-center">
+                             <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3 size-40">
+                                {{ user.username[0] | upper }}
+                             </div>
+                             <div>
+                                 <h6 class="mb-0">{{ user.username }}</h6>
+                                 <small class="text-muted">{{ user.email }}</small>
+                             </div>
+                         </div>
+                     </td>
+                     <td>
+                         {% if user.is_admin %}
+                         <span class="badge bg-danger">{{ _('Administrator') }}</span>
+                         {% else %}
+                         <span class="badge bg-primary">{{ _('Użytkownik') }}</span>
+                         {% endif %}
+                     </td>
+                     <td>
+                         <span class="badge bg-secondary">{{ user.projects|length }}</span>
+                         {% if user.projects %}
+                         <div class="mt-1">
+                             {% for project_user in user.projects[:3] %}
+                             <span class="badge bg-light text-dark me-1">{{ project_user.project.name }}</span>
+                             {% endfor %}
+                             {% if user.projects|length > 3 %}
+                             <small class="text-muted">+{{ user.projects|length - 3 }} {{ _('więcej') }}</small>
+                             {% endif %}
+                         </div>
+                         {% endif %}
+                     </td>
+                     <td>
+                         {% if user.last_login %}
+                         <small data-local-dt="{{ user.last_login.isoformat() }}">{{ user.last_login.strftime('%d.%m.%Y %H:%M') }}</small>
+                         {% else %}
+                         <small class="text-muted">{{ _('Nigdy') }}</small>
+                         {% endif %}
+                     </td>
+                     <td>
+                         {% if online_map and online_map.get(user.id) %}
+                         <span class="badge bg-success">{{ _('Online') }}</span>
+                         {% else %}
+                         <span class="badge bg-secondary">{{ _('Offline') }}</span>
+                         {% endif %}
+                     </td>
+                     <td>
+                         <button class="btn btn-sm btn-action me-1" type="button" data-user-id="{{ user.id }}" data-action="edit" title="{{ _('Edytuj') }}"><i class="material-icons text-info">edit</i></button>
+                         <button class="btn btn-sm btn-action me-1" type="button" data-user-id="{{ user.id }}" data-action="reset-mfa" title="{{ _('Resetuj MFA') }}"><i class="material-icons text-warning">phonelink_lock</i></button>
+                         <button class="btn btn-sm btn-action me-1" type="button" data-user-id="{{ user.id }}" data-action="projects" data-bs-toggle="modal" data-bs-target="#projectsModal" title="{{ _('Projekty użytkownika') }}"><i class="material-icons text-success">assessment</i></button>
+                         {% if current_user.id != user.id and (not user.is_admin or users|length > 1) %}
+                         <button class="btn btn-sm btn-action" type="button" data-user-id="{{ user.id }}" data-action="delete" title="{{ _('Usuń') }}"><i class="material-icons text-danger">delete</i></button>
+                         {% endif %}
+                     </td>
+                 </tr>
+                 {% endfor %}
+             </tbody>
+            </table>
+        </div>
+        {% if pagination %}
+        <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <div class="form-text mb-0">{{ _('Łącznie:') }} {{ total_users }}</div>
+            </div>
+            <nav aria-label="{{ _('Paginacja użytkowników') }}">
+                <ul class="pagination mb-0">
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin.users', page=pagination.prev_num) }}" tabindex="-1">«</a>
+                    </li>
+                    <li class="page-item active"><span class="page-link">{{ pagination.page }}</span></li>
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin.users', page=pagination.next_num) }}">»</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="material-icons display-4 large">people</i>
+    <h3 class="text">{{ _('Brak użytkowników') }}</h3>
+    <p class="text">{{ _('Dodaj pierwszego użytkownika do systemu.') }}</p>
+</div>
+{% endif %}
+
+<!-- Modal do zarządzania projektami użytkownika -->
+<div id="projectsModal" class="modal fade" tabindex="-1" aria-hidden="true">
+     <div class="modal-dialog">
+         <div class="modal-content">
+             <div class="modal-header">
+                 <h5 class="modal-title">{{ _('Projekty Użytkownika') }}</h5>
+                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+             </div>
+             <div class="modal-body" id="projectsModalBody">
+                 <!-- {{ _('Zawartość będzie ładowana dynamicznie') }} -->
+             </div>
+             <div class="modal-footer">
+                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Zamknij') }}</button>
+             </div>
+         </div>
+     </div>
+ </div>
+{% endblock %}
+
+{% block scripts %}
+<div id="editUserModalContainer"></div>
+<script id="i18n-users" type="application/json">{{ {
+    'administrator': "Administrator",
+    'userRole': "Użytkownik",
+    'never': "Nigdy",
+    'online': "Online",
+    'offline': "Offline",
+    'more': "więcej",
+    'edit': "Edytuj",
+    'resetMfa': "Resetuj MFA",
+    'userProjects': "Projekty użytkownika",
+    'delete': "Usuń",
+    'loadEditFormFailed': "Nie można załadować formularza edycji",
+    'saved': "Zapisano",
+    'saveError': "Błąd podczas zapisu",
+    'genericError': "Błąd",
+    'loadProjectsFailed': "Nie można załadować projektów",
+    'assignmentsUpdated': "Przypisania zaktualizowane",
+    'mfaResetConfirm': "Czy na pewno zresetować MFA temu użytkownikowi?",
+    'mfaResetOk': "MFA zresetowane",
+    'mfaResetError': "Błąd podczas resetu MFA",
+    'networkError': "Błąd sieci",
+    'deleteConfirmUser': "Czy na pewno chcesz usunąć tego użytkownika? Ta operacja jest nieodwracalna.",
+    'userDeleted': "Użytkownik usunięty",
+    'deleteError': "Błąd podczas usuwania"
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/admin_users.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+        </div> <!-- /.container-fluid -->
+{% endblock %}

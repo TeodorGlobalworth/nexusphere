@@ -1,0 +1,135 @@
+﻿{% extends "base.html" %}
+
+{% block title %}NexuSphere - Panel Administratora{% endblock %}
+
+{% block content %}
+<div class="admin-dashboard container-fluid px-4">
+<div class="row mb-2">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="h3 mb-2">Panel Administratora</h1>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('admin.new_project') }}" class="btn btn-primary btn-sm">
+                    <i class="material-icons me-1">add</i>{{ _('Nowy Projekt') }}
+                </a>
+                <a href="{{ url_for('admin.new_user') }}" class="btn btn-secondary btn-sm">
+                    <i class="material-icons me-1">person_add</i>{{ _('Nowy Użytkownik') }}
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statystyki -->
+<div class="stats-row row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-4">
+    <div class="col">
+    <div class="card stat-card h-100 stat-card--projekty">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Projekty</div>
+                        <h3 class="mb-0">{{ stats.total_projects }}</h3>
+                    </div>
+                    <i class="material-icons display-4">assessment</i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+    <div class="card stat-card h-100 stat-card--uzytkownicy">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="small">Użytkownicy</div>
+                        <h3 class="mb-0">{{ stats.total_users }}</h3>
+                    </div>
+                    <i class="material-icons display-4">people</i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ostatnie Projekty -->
+<div class="row">
+    <div class="col-12 col-md-8">
+    <div class="ui-panel ui-gallery">
+            <div class="ui-panel-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ _('Ostatnie Projekty') }}</h5>
+                    <a href="{{ url_for('admin.projects') }}" class="btn btn-outline-secondary">{{ _('Zobacz wszystkie') }}</a>
+                </div>
+            </div>
+            <div class="ui-panel-body">
+                {% if projects %}
+                <div class="project-grid row gx-3 gy-3">
+                    {% for project in projects[:6] %}
+                    <div class="col-12 col-md-6 col-lg-4">
+                        <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="project-tile text-decoration-none" aria-label="{{ _('Przejdź do projektu') }}: {{ project.name }}">
+                            <div class="project-name"><strong>{{ project.name }}</strong></div>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center">
+                    <i class="material-icons large">folder_open</i>
+                    <h5 class="text">{{ _('Brak projektów') }}</h5>
+                    <p class="text">{{ _('Utwórz pierwszy projekt, aby rozpocząć pracę z systemem.') }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="ui-panel ui-gallery">
+            <div class="ui-panel-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ _('Ostatni Użytkownicy') }}</h5>
+                    <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary">{{ _('Zobacz wszystkich') }}</a>
+                </div>
+            </div>
+            <div class="ui-panel-body">
+                {% if users %}
+                <ul class="list-group">
+                    {% for user in users[:5] %}
+                    <li class="list-group-item">
+                        <div class="user-card">
+                            <div>
+                                <h6>{{ user.username }}</h6>
+                                <small class="text">{{ user.email }}</small>
+                            </div>
+                            {% if user.is_admin %}
+                            <span class="badge bg-danger ms-2">{{ _('Admin') }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary ms-2">{{ _('User') }}</span>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-center">
+                    <i class="material-icons display-4">people</i>
+                    <p class="text">{{ _('Brak użytkowników') }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="i18n-admin-dashboard" type="application/json">{{ {
+    'projects': "Projekty",
+    'users': "Użytkownicy",
+    'packages': "Pakiety",
+    'tokens': "Tokeny AI",
+    'fragments': "Fragmenty"
+}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/admin_dashboard.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}
+

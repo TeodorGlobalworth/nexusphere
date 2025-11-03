@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+      <div class="ui-panel">
+        <h1 class="h3 mb-3 text-center">{{ _('Brak dostępu') }}</h1>
+        <p class="mb-4 text-center">{{ _('Nie masz uprawnień do wyświetlenia tej strony dla wybranej organizacji.') }}</p>
+        <a class="btn btn-primary" href="{{ url_for('main.index') }}">{{ _('Powrót') }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,716 @@
+/*
+  Clean app stylesheet (built from scratch)
+  - Provides theme variables
+  - Defines a reusable .stat-card component
+  - Adds semantic modifiers for the admin dashboard stat cards:
+      .stat-card--projekty    -> primary color
+      .stat-card--uzytkownicy -> success color
+      .stat-card--pakiety      -> purple (fiolet)
+      .stat-card--tokeny      -> warning color
+      .stat-card--fragmenty   -> info color
+
+  The color values here mirror the colors that were in the previous CSS
+  so visual output remains the same while enabling central control.
+*/
+
+:root{
+  /* Base palette (light mode defaults) - semantic Polish names */
+  --projekty:  #0d6efd; /* niebieski - projekty */
+  --uzytkownicy:#198754; /* zielony - uzytkownicy */
+  --tokeny:     #ffc107; /* żółty - tokeny */
+  --fragmenty:  #0dcaf0; /* turkusowy - fragmenty */
+  --pakiety:    #9b59b6; /* fiolet - pakiety */
+  /* darker variants used for hover/focus states */
+  --projekty-dark: #0b5ed7;
+  --uzytkownicy-dark: #157347;
+  --pakiety-dark: #8749a3;
+
+  /* Global application background (outside sidebar) */
+  --app-bg: #1e2b33;
+
+  /* Structural tokens */
+  --card-bg: #ffffff;
+  --card-border: rgba(0,0,0,0.08);
+  --text: #222222;
+  --muted: #6c757d;
+  /* Button typography tokens --- keep button sizes/colors consistent */
+  --btn-font-size: .875rem;
+  --btn-font-color: #ffffff; /* unified button text color */
+}
+
+/* Dark theme overrides (consumed when .theme-dark present on html/body) */
+html.theme-dark, body.theme-dark{
+  --card-bg: #0f171b;
+  --card-border: rgba(255,255,255,0.03);
+  --text: #e6eef6;
+  --muted: #9aa8b6;
+}
+
+/* Generic page defaults used by the app (minimal) */
+body{font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; color:var(--text); background:var(--app-bg)}
+
+/* Also style elements using the Bootstrap utility class 'h3' (e.g. class="h3 mb-2") */
+.h3 { color: #fff }
+
+/* Layout / critical styles moved from base.html to central stylesheet
+  These were originally inline in base.html to avoid FOUC; centralized here
+  per request so styles don't conflict across multiple locations. */
+.app-root{display:flex;min-height:100vh}
+.modern-sidebar{width:240px;flex:0 0 240px;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;overflow:hidden}
+.sidebar-nav{flex:1 1 auto;overflow-y:auto}
+.main-content{flex:1 1 auto;display:flex;flex-direction:column;min-height:100vh; background:var(--app-bg); padding-top:1.25rem;}
+/* Provide a little horizontal breathing room on very small screens */
+@media (max-width: 575.98px){
+  .main-content{padding-left:.75rem; padding-right:.75rem;}
+}
+/* removed top utility bar */
+.lang-dropup .dropdown-menu{min-width:140px;font-size:.8rem;background:#122630;border:1px solid rgba(255,255,255,0.12);box-shadow:0 8px 24px rgba(0,0,0,0.35);} 
+.lang-dropup .dropdown-menu .dropdown-item{color:#e6eef6;padding:.45rem .75rem;border-radius:.45rem;}
+.lang-dropup .dropdown-menu .dropdown-item:hover,
+.lang-dropup .dropdown-menu .dropdown-item:focus{background:#1d404d;color:#fff;}
+.lang-dropup .dropdown-menu .dropdown-item.active{background:rgba(13,110,253,0.45);color:#fff;}
+.lang-dropup .dropdown-menu .text-muted{color:rgba(255,255,255,0.6)!important;}
+.lang-current{display:inline-flex;align-items:center;gap:.25rem;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px}
+.sidebar-footer{margin-top:auto}
+.nav-link{font-size:var(--btn-font-size);padding:.45rem .75rem;border-radius:.375rem}
+.lang-flag{width:16px;height:16px;object-fit:contain}
+/* Ensure brand logo is 40x40 in the sidebar */
+.modern-sidebar .brand-logo{width:40px !important;height:40px !important;display:inline-block}
+@media (max-width:767px){.app-root{flex-direction:column}.modern-sidebar{width:100%;flex:0 0 auto;height:auto;position:static;overflow:visible}.sidebar-nav{overflow:visible}.top-utility-bar{justify-content:space-between}}
+
+/* Base button typography + unified text color */
+.btn{font-size:var(--btn-font-size);color:var(--btn-font-color);text-decoration:none}
+/* Custom sidebar minimal button (shares typography) */
+.btn-sidebar{font-size:var(--btn-font-size);color:var(--btn-font-color);text-decoration:none;display:inline-flex;align-items:center;gap:.35rem;border-radius:.4rem;border:1px solid rgba(255,255,255,0.12);background:transparent;padding:.45rem .75rem}
+.btn-sidebar:hover,.btn-sidebar:focus{background:rgba(255,255,255,0.08)}
+/* Stat card component */
+.stat-card{
+  display:block;
+  border-radius:8px;
+  overflow:hidden;
+  background:var(--card-bg);
+  border:1px solid var(--card-border);
+  color:var(--text);
+  box-shadow:none;
+}
+.stat-card .card-body{padding:1rem}
+
+/* Compact stat card body used on admin dashboard (matches previous inline padding) */
+.stat-card--projekty .card-body, .stat-card--uzytkownicy .card-body, .stat-card--pakiety .card-body, .stat-card--tokeny .card-body, .stat-card--fragmenty .card-body{ padding:0.85rem }
+
+/* Ensure any stat-card modifier provides white text; this removes need for `text-white` in HTML */
+.stat-card[class*='stat-card--']{ color: #fff }
+.stat-card h3{font-weight:600;margin:0;color:inherit}
+
+.stat-card .small{color:var(--muted)}
+
+/* When a card is explicitly using white text (colored background), ensure the
+  small helper labels inside are also white for legibility. This overrides the
+  muted default used elsewhere. */
+.stat-card[class*='stat-card--'] .small{ color: rgba(255,255,255,0.95) }
+
+/* Semantic color modifiers (match the previous visual palette) */
+.stat-card--projekty{background:var(--projekty);border-color:rgba(13,110,253,0.12)}
+.stat-card--uzytkownicy{background:var(--uzytkownicy);border-color:rgba(25,135,84,0.12)}
+.stat-card--pakiety{background:var(--pakiety);border-color:rgba(155,89,182,0.12)}
+.stat-card--tokeny{background:var(--tokeny);border-color:rgba(255,193,7,0.12)}
+.stat-card--fragmenty{background:var(--fragmenty);border-color:rgba(13,202,240,0.12)}
+
+/* Ensure icons inside colored stat cards use slightly translucent white like before */
+.stat-card--projekty .material-icons, .stat-card--uzytkownicy .material-icons, .stat-card--pakiety .material-icons, .stat-card--tokeny .material-icons, .stat-card--fragmenty .material-icons{
+  color: rgba(255,255,255,0.95) !important;
+}
+
+/* Small responsive helper used by admin dashboard */
+.stats-row{overflow-x:auto}
+.stats-row .stat-col{flex:1 1 0;min-width:200px}
+
+/* (legacy .bg-purple / .btn-purple removed in favor of semantic .stat-card--pakiety and .btn--pakiety) */
+
+/* Dropdown items share the same font size; color left to Bootstrap theme */
+.dropdown-item{font-size:var(--btn-font-size)}
+
+/* Map Bootstrap button utilities to semantic palette so buttons match stat-cards */
+/* Button variants (no !important needed because this file loads after Bootstrap) */
+.btn-primary{background-color:var(--projekty);border-color:rgba(13,110,253,0.12);color:#fff}
+.btn-primary:hover,.btn-primary:focus{background-color:var(--projekty-dark);border-color:rgba(11,94,215,0.18)}
+
+.btn-success{background-color:var(--uzytkownicy);border-color:rgba(25,135,84,0.12);color:#fff}
+.btn-success:hover,.btn-success:focus{background-color:var(--uzytkownicy-dark);border-color:rgba(21,115,71,0.18)}
+
+/* Semantic BEM-style button modifiers (mirror stat-card modifiers) */
+.btn--projekty{background-color:var(--projekty);border-color:rgba(13,110,253,0.12);color:#fff}
+.btn--projekty:hover,.btn--projekty:focus{background-color:var(--projekty-dark)}
+.btn--uzytkownicy{background-color:var(--uzytkownicy);border-color:rgba(25,135,84,0.12);color:#fff}
+.btn--uzytkownicy:hover,.btn--uzytkownicy:focus{background-color:var(--uzytkownicy-dark)}
+.btn--pakiety{background-color:var(--pakiety);border-color:rgba(155,89,182,0.12);color:#fff}
+.btn--pakiety:hover,.btn--pakiety:focus{background-color:var(--pakiety-dark)}
+
+/* Small accessibility: ensure text inside colored cards has enough contrast in light mode */
+@media (prefers-color-scheme: light){
+  .stat-card--projekty, .stat-card--uzytkownicy, .stat-card--pakiety, .stat-card--tokeny, .stat-card--fragmenty{color:#fff}
+}
+
+/* Sidebar: use a dedicated semantic class to avoid forcing styles with !important */
+/* Apply a dark sidebar style when the aside has .sidebar-dark */
+aside.modern-sidebar.sidebar-dark{
+  background: #122630;
+  color: rgba(255,255,255,0.92);
+}
+aside.modern-sidebar.sidebar-dark .nav-link i{
+  color: rgba(255,255,255,0.9);
+  background-color: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+/* Sidebar footer buttons now inherit base .btn-sidebar styles */
+
+/* (icons rule consolidated earlier) */
+
+/* Subtle hover background for nav links to indicate interaction */
+aside.modern-sidebar.sidebar-dark .nav-link{
+  /* Ensure base (non-hover) state uses white-toned text instead of Bootstrap link blue */
+  color: rgba(255,255,255,0.90);
+  transition: background-color .12s ease, color .12s ease;
+}
+/* Active/current page link variants also forced to white for consistency */
+aside.modern-sidebar.sidebar-dark .nav-link.active,
+aside.modern-sidebar.sidebar-dark .nav-link[aria-current="page"]{
+  color: #ffffff;
+}
+aside.modern-sidebar.sidebar-dark .nav-link:hover,
+aside.modern-sidebar.sidebar-dark .nav-link:focus{
+  background-color: rgba(255,255,255,0.04);
+  color: #ffffff;
+}
+
+/* Logout btn in sidebar: make hover state red with white text for clear affordance */
+aside.modern-sidebar.sidebar-dark .sidebar-footer .btn.btn-outline-danger{
+  color: #ffffff; border-color: rgba(255,255,255,0.08); background: transparent;
+}
+aside.modern-sidebar.sidebar-dark .sidebar-footer .btn.btn-outline-danger:hover,
+aside.modern-sidebar.sidebar-dark .sidebar-footer .btn.btn-outline-danger:focus{
+  background-color: #dc3545; /* bootstrap danger */
+  border-color: #dc3545;
+  color: #fff;
+}
+
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  .modern-sidebar,
+  .print-hidden,
+  .navbar,
+  .toast-container {
+    display: none !important;
+  }
+
+  .app-root { display: block; }
+
+  .main-content {
+    margin: 0 !important;
+    width: 100% !important;
+  }
+  
+  .analytics-page {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .analytics-page .row.mb-4 {
+    margin-bottom: 1rem !important;
+  }
+
+  .analytics-page .print-grid-3 {
+    --bs-gutter-x: 1rem;
+    --bs-gutter-y: 1rem;
+  }
+
+  .analytics-page .print-grid-3 {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem !important;
+  }
+
+  .analytics-page .print-grid-3 > [class*="col-"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .analytics-page .print-grid-2 {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem !important;
+    --bs-gutter-x: 1.25rem;
+    --bs-gutter-y: 1rem;
+  }
+
+  .analytics-page .print-grid-2 > [class*="col-"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .analytics-page .print-grid-2 .h-100 {
+    height: auto !important;
+  }
+
+  .analytics-page .analytics-stat-card,
+  .analytics-page .ui-panel {
+    page-break-inside: avoid;
+  }
+
+  .analytics-page .analytics-stat-card {
+    padding: 14px 16px !important;
+  }
+
+  .analytics-page .ui-panel .card-body {
+    padding: 1rem !important;
+  }
+
+  .analytics-page .analytics-chart-wrapper {
+    padding: 0 !important;
+  }
+
+  .analytics-page #analyticsDailyChart {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 220px !important;
+  }
+}
+
+.analytics-page .analytics-range-btn.active {
+  background-color: rgba(13, 110, 253, 0.28);
+  border-color: rgba(13, 110, 253, 0.6);
+  color: #ffffff;
+}
+
+
+/* End of freshly built app.css */
+
+/* --- Dashboard specific UI panel & gallery styles --- */
+/* Reusable panel wrapper (gallery / lists) */
+.ui-panel{background:#122630; border:1px solid rgba(255,255,255,0.07); border-radius:12px; color:var(--text); display:flex; flex-direction:column;}
+.ui-panel.ui-gallery{background:#152c36;} /* slightly different tone for gallery containers */
+.ui-panel-header{padding:.75rem 1rem; border-bottom:1px solid rgba(255,255,255,0.06); font-weight:600; border-top-left-radius:12px; border-top-right-radius:12px;}
+.ui-panel-header h5{margin:0;}
+.ui-panel-body{padding:1rem; border-bottom-left-radius:12px; border-bottom-right-radius:12px;}
+
+/* Individual project tiles inside gallery */
+.project-grid .project-tile{background:#193743; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:.9rem .9rem 1rem; min-height:100%; height:100%; display:flex; flex-direction:column; cursor:pointer; color:#fff;}
+.project-grid .project-tile:hover{border-color:rgba(255,255,255,0.18); background:#1d404d; text-decoration:none;}
+/* Spacing & styling for project actions list items */
+.project-actions-list .action-item{border-radius:10px;}
+/* Knowledge base layout adjustments */
+.knowledge-base-wrapper{padding-top:.5rem;}
+/* side column should follow grid width; only adjust spacing inside if needed */
+.knowledge-base-wrapper .kb-side-col{max-width:100%;}
+.mini-stat .ui-panel-body{padding:.9rem .9rem .85rem;}
+.mini-stat h3{margin:0;font-weight:600;}
+/* Knowledge Base table theming to match list-group dark tiles */
+.kb-table{--kb-row-bg:#122630;--kb-row-border:rgba(255,255,255,0.08);--kb-row-bg-hover:#1d404d;--kb-head-bg:#122630;--kb-head-border:rgba(255,255,255,0.12);--kb-text:#fff;--kb-muted:rgba(255,255,255,0.65);} 
+.kb-table thead th{background:var(--kb-head-bg)!important;color:var(--kb-text);border-bottom:1px solid var(--kb-head-border)!important;font-weight:500;padding:.65rem .75rem;}
+.kb-table tbody tr.kb-file-header td{background:var(--kb-row-bg);border-top:1px solid var(--kb-row-border);color:var(--kb-text);}
+.kb-table tbody tr.kb-file-detail td{background:var(--kb-row-bg);border-top:0;border-bottom:1px solid var(--kb-row-border);color:var(--kb-text);padding:.55rem .65rem;}
+.kb-table tbody tr.kb-file-detail:hover td,.kb-table tbody tr.kb-file-header:hover td{background:var(--kb-row-bg-hover);}
+.kb-table .text-muted, .kb-table small, .kb-table .small{color:var(--kb-muted)!important;}
+.kb-table .badge.bg-light{background:#23495a!important;color:#fff!important;}
+.kb-table .badge.bg-warning{background:var(--tokeny)!important;}
+.kb-table .badge.bg-info{background:var(--fragmenty)!important;}
+.kb-table .badge.bg-success{background:var(--uzytkownicy)!important;}
+.kb-table .badge.bg-danger{background:#dc3545!important;}
+.kb-table .badge{font-weight:500;}
+.kb-table tr.kb-file-header{cursor:pointer;}
+.kb-table tr.kb-file-header:hover .kb-filename{text-decoration:underline;}
+.kb-table .kb-filename{font-size:.9rem;}
+.kb-table td.col-actions .btn{padding:.25rem .45rem;}
+.kb-table td.col-actions .btn i.material-icons{font-size:1.05rem;line-height:1;}
+.kb-table tbody tr:last-child td{border-bottom:1px solid var(--kb-row-border);} 
+.kb-table .placeholder-cell{width:28px;}
+/* Users table (admin) adopting same dark theme tokens */
+.users-wrapper{padding-top:.5rem;}
+.users-table{--usr-row-bg:#122630;--usr-row-border:rgba(255,255,255,0.08);--usr-row-bg-hover:#1d404d;--usr-head-bg:#122630;--usr-head-border:rgba(255,255,255,0.12);--usr-text:#fff;--usr-muted:rgba(255,255,255,0.65);}
+.users-table thead th{background:var(--usr-head-bg)!important;color:var(--usr-text);border-bottom:1px solid var(--usr-head-border)!important;font-weight:500;padding:.65rem .75rem;}
+.users-table tbody tr td{background:var(--usr-row-bg);border-top:1px solid var(--usr-row-border);color:var(--usr-text);}
+.users-table tbody tr:hover td{background:var(--usr-row-bg-hover);}
+.users-table .text-muted, .users-table small, .users-table .small{color:var(--usr-muted)!important;}
+.users-table .badge.bg-light{background:#23495a!important;color:#fff!important;}
+.users-table .badge.bg-secondary{background:#4a6b7f!important;color:#fff!important;}
+.users-table .badge.bg-primary{background:var(--projekty)!important;}
+.users-table .badge.bg-danger{background:#dc3545!important;}
+.users-table .badge.bg-success{background:var(--uzytkownicy)!important;}
+.users-table .badge{font-weight:500;}
+.users-table .size-40{width:40px;height:40px;font-size:.95rem;}
+/* Unified tiny action buttons (icon-only) */
+.btn-action{background:#193743; border:1px solid rgba(255,255,255,0.15); color:#fff; padding:.35rem .45rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; border-radius:8px;}
+.btn-action i.material-icons{font-size:1.05rem; line-height:1;}
+.btn-action:hover,.btn-action:focus{background:#1d404d; border-color:rgba(255,255,255,0.28); color:#fff; text-decoration:none;}
+.btn-action:active{background:#255267;}
+.users-table-wrapper{border-top:1px solid rgba(255,255,255,0.06);} 
+.prompts-table-wrapper{border-top:1px solid rgba(255,255,255,0.06);}
+.prompts-table{--prompt-row-bg:#122630;--prompt-row-border:rgba(255,255,255,0.08);--prompt-row-bg-hover:#1d404d;--prompt-head-bg:#122630;--prompt-head-border:rgba(255,255,255,0.12);--prompt-text:#fff;--prompt-muted:rgba(255,255,255,0.65);}
+.prompts-table thead th{background:var(--prompt-head-bg)!important;color:var(--prompt-text);border-bottom:1px solid var(--prompt-head-border)!important;font-weight:500;padding:.65rem .75rem;}
+.prompts-table tbody td{background:var(--prompt-row-bg);border-top:1px solid var(--prompt-row-border);color:var(--prompt-text);vertical-align:middle;}
+.prompts-table tbody tr:hover td{background:var(--prompt-row-bg-hover);}
+.prompts-table code.prompt-key{background:#193743; color:#9dd7ff; padding:.15rem .4rem; border-radius:6px; font-size:.75rem; display:inline-block; margin-bottom:.3rem;}
+.prompts-table .prompt-meta{display:flex; flex-direction:column; gap:.15rem;}
+.prompts-table .prompt-snippet{display:block; font-size:.7rem; line-height:1.35; color:var(--prompt-muted)!important; max-width:420px;}
+.prompts-table .prompt-actions{min-width:200px;}
+.prompt-action-button{background:#193743; border:1px solid rgba(255,255,255,0.16); color:#fff; padding:.38rem .65rem; border-radius:999px; display:inline-flex; align-items:center; gap:.35rem; font-size:.75rem; line-height:1; transition:background-color .18s ease,border-color .18s ease,transform .18s ease;}
+.prompt-action-button i.material-icons{font-size:1rem; line-height:1;}
+.prompt-action-button:hover,.prompt-action-button:focus{background:#255267; border-color:rgba(255,255,255,0.30); color:#fff; text-decoration:none; transform:translateY(-1px);}
+.prompt-action-button--ghost{background:transparent; border-color:rgba(255,255,255,0.20); color:#d6dfeb;}
+.prompt-action-button--ghost:hover,.prompt-action-button--ghost:focus{background:#1d404d; border-color:rgba(255,255,255,0.32); color:#fff;}
+.prompt-action-button:active{transform:none;}
+.fill-highlight{animation:formFillFlash .9s ease-out;}
+@keyframes formFillFlash{0%{box-shadow:0 0 0 0 rgba(13,110,253,0.0);}45%{box-shadow:0 0 0 6px rgba(13,110,253,0.25);}100%{box-shadow:0 0 0 0 rgba(13,110,253,0.0);}}
+.w-180{width:180px!important;}
+.project-settings-panel .ui-panel-body{padding:1.35rem 1.5rem 1.25rem;}
+.project-settings-panel .ui-form>.mb-3:last-of-type{margin-bottom:1.2rem;}
+.project-settings-panel .ui-form .d-flex.justify-content-end{margin-top:1.25rem;}
+.project-settings-panel .ui-form .btn{min-width:150px;}
+.project-settings-panel .ui-form{gap:.75rem;display:flex;flex-direction:column;}
+.project-logs-panel .ui-panel-body{padding:1.1rem 1.1rem 1.0rem;}
+.project-logs-panel .table{--logs-row-bg:#122630;--logs-row-border:rgba(255,255,255,0.07);--logs-row-hover:#1d404d;--logs-head-bg:#152c36;--logs-text:#f4f7fb;--logs-muted:rgba(255,255,255,0.58);}
+.project-logs-panel thead th{background:var(--logs-head-bg)!important;color:var(--logs-text);border-bottom:1px solid var(--logs-row-border)!important;font-size:.72rem;font-weight:600;letter-spacing:.4px;text-transform:uppercase;padding:.6rem .75rem;}
+.project-logs-panel tbody td{background:var(--logs-row-bg);color:var(--logs-text);border-top:1px solid var(--logs-row-border);padding:.65rem .75rem;vertical-align:middle;}
+.project-logs-panel tbody tr:hover td{background:var(--logs-row-hover);} 
+.project-logs-panel .logs-table__date{font-weight:600;font-size:.85rem;color:var(--logs-text);}
+.project-logs-panel .logs-table__date-muted{font-size:.65rem;color:var(--logs-muted);text-transform:uppercase;letter-spacing:.4px;}
+.project-logs-panel .logs-table__actor{color:var(--logs-muted)!important;}
+.project-logs-panel .badge{font-weight:600;}
+/* Modal (preview & generic) dark theming */
+.modal-content{background:#122630; border:1px solid rgba(255,255,255,0.08); color:var(--text);}
+.modal-header{border-bottom:1px solid rgba(255,255,255,0.08); background:#152c36;}
+.modal-footer{border-top:1px solid rgba(255,255,255,0.08); background:#152c36;}
+.modal-title{color:#fff;}
+.modal-content .text-muted, .modal-content small{color:rgba(255,255,255,0.65)!important;}
+.modal-content pre{background:#193743; color:#fff;}
+.modal-backdrop.show{opacity:.55;}
+/* Knowledge base preview content box */
+.kb-preview-box{background:#193743; color:#fff; border:1px solid rgba(255,255,255,0.12); font-family:monospace; font-size:.8rem; line-height:1.35; overflow:auto; width:100%; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;}
+.history-preview-box,
+.history-fragment-box{padding:1rem; border-radius:10px; max-height:45vh;}
+.history-preview-box{margin-bottom:0;}
+.kb-preview-box::-webkit-scrollbar{width:10px}
+.kb-preview-box::-webkit-scrollbar-track{background:#122630}
+.kb-preview-box::-webkit-scrollbar-thumb{background:#2c5666; border-radius:6px}
+.kb-preview-box::-webkit-scrollbar-thumb:hover{background:#357184}
+.project-grid .project-tile:focus{outline:2px solid var(--projekty); outline-offset:2px; text-decoration:none;}
+.project-grid .project-tile .project-name{font-size:.9rem; line-height:1.2;}
+
+/* Progress bars (tokens / fragments) */
+.project-progress{background:#4a6b7f; border-radius:6px; height:8px; overflow:hidden; position:relative;}
+.project-progress .progress-bar{background:var(--tokeny); transition:width .35s ease;}
+/* Fragment (storage) progress uses existing storage-progress class */
+.project-progress.storage-progress .progress-bar{background:var(--fragmenty);}
+
+/* Ensure the Bootstrap .progress resets don't override our custom styling */
+.project-progress.progress{background:#4a6b7f;}
+.project-progress.progress .progress-bar{box-shadow:none;}
+
+/* --- Unified list-group styling to match project-grid tiles --- */
+.list-group{display:flex;flex-direction:column;gap:.55rem;background:transparent;padding:0;margin:0;}
+.list-group-item{background:#193743; border:1px solid rgba(255,255,255,0.08); border-radius:10px; color:#fff; padding:.75rem .9rem; transition:background-color .18s ease,border-color .18s ease,color .18s ease;}
+/* Ensure anchor/button variants keep same look */
+.list-group-item-action{cursor:pointer;}
+.list-group-item-action:hover,.list-group-item-action:focus{background:#1d404d; border-color:rgba(255,255,255,0.18); color:#fff; text-decoration:none;}
+.list-group-item:focus{outline:2px solid var(--projekty); outline-offset:2px;}
+/* Remove Bootstrap default bordering between siblings since we use gap */
+.list-group-item + .list-group-item{border-top-width:1px;}
+/* Flush variant should not collapse our gap styling */
+.list-group-flush .list-group-item{border-radius:10px;}
+/* Muted text inside list items on dark background */
+.list-group-item .text-muted, .list-group-item small, .list-group-item .small{color:rgba(255,255,255,0.65)!important;}
+/* Badges remain readable; lighten secondary on dark if needed */
+.list-group-item .badge.bg-secondary{background-color:#4a6b7f !important;}
+
+/* Project tile details collapse */
+.project-tile .project-details{background:#152c36; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:.75rem .85rem;}
+.project-tile .project-details p{color:rgba(255,255,255,0.85);}
+.project-tile .project-details .small{color:rgba(255,255,255,0.55)!important;}
+.activity-list .list-group-item{flex-wrap:wrap; align-items:flex-start; gap:.35rem;}
+.activity-title{font-weight:600;color:#fff;display:block;word-break:break-word;overflow-wrap:anywhere;}
+.activity-meta{display:block;margin-top:.2rem;word-break:break-word;overflow-wrap:anywhere;}
+.activity-list .text-end{min-width:110px;}
+@media (max-width: 575.98px){
+  .activity-list .list-group-item{flex-direction:column;align-items:flex-start;padding:1rem .9rem;}
+  .activity-list .text-end{width:100%;text-align:left!important;margin-left:0;margin-top:.6rem;}
+  .activity-list .text-end .badge{margin-bottom:.35rem;}
+}
+
+/* Experimental admin view: keep log content readable on narrow screens */
+.admin-experimental pre{
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
+.admin-experimental #exp-vector-logs{
+  max-height: 420px;
+  overflow: auto;
+}
+.admin-experimental #exp-response,
+.admin-experimental #exp-raw-json{
+  background:#102832;
+  color:rgba(240,247,255,0.92);
+  border-radius:0.75rem;
+}
+.admin-experimental #exp-response{
+  border:0;
+  white-space:pre-wrap;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+  max-height:420px;
+  overflow:auto;
+  min-height:6rem;
+}
+.admin-experimental #exp-raw-json{
+  border:1px solid rgba(255,255,255,0.18);
+  max-height:420px;
+  overflow:auto;
+}
+.admin-experimental .row-cols-lg-2 > *{
+  min-width: 0;
+}
+.admin-experimental .search-steps-table-wrapper{
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.admin-experimental .search-steps-table-wrapper table{
+  margin-bottom: 0;
+}
+
+/* Utility: multi-line truncation for snippets */
+.line-clamp-2{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  line-clamp:2;
+  -webkit-line-clamp:2;
+  overflow:hidden;
+}
+
+/* Project history page */
+.project-history-page{
+  display:flex;
+  flex-direction:column;
+  gap:1.5rem;
+}
+.project-history-page .ui-panel{background:#122630;border-color:rgba(255,255,255,0.08);}
+.project-history-page .card-body{padding:1.25rem;}
+.project-history-page form .form-label{font-size:.82rem;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.35px;}
+.project-history-page form .form-control,
+.project-history-page form .form-select{
+  background:#0f2530;
+  border-color:rgba(255,255,255,0.16);
+  color:#fff;
+}
+.project-history-page form .form-control:focus,
+.project-history-page form .form-select:focus{
+  background:#142f3c;
+  border-color:rgba(13,110,253,0.45);
+  box-shadow:0 0 0 .15rem rgba(13,110,253,0.20);
+  color:#fff;
+}
+.project-history-page #historyTable{
+  color:#eef5fb;
+  font-size:.9rem;
+  border-collapse:separate;
+  border-spacing:0;
+}
+.project-history-page #historyTable thead th{
+  background:#102b37;
+  color:#d6e4ef;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+  text-transform:uppercase;
+  font-size:.72rem;
+  letter-spacing:.42px;
+  padding:.65rem .75rem;
+}
+.project-history-page #historyTable tbody td{
+  background:#122630;
+  border-top:1px solid rgba(255,255,255,0.06);
+  vertical-align:middle;
+  padding:.75rem .75rem;
+}
+.project-history-page #historyTable tbody tr:hover td{
+  background:#1b3643;
+}
+.project-history-page #historyTable .badge{
+  font-weight:600;
+  border-radius:999px;
+}
+.project-history-page #historyTable .badge.bg-secondary{background:#4a6b7f!important;color:#fff!important;}
+.project-history-page #historyTable .badge.bg-info{background:var(--fragmenty)!important;color:#fff!important;}
+.project-history-page #historyTable .small{color:rgba(255,255,255,0.75)!important;}
+.project-history-page #historyTable .small.text-muted{color:rgba(255,255,255,0.55)!important;}
+.project-history-page #historyTable td,.project-history-page #historyTable td span,.project-history-page #historyTable td div{color:#eef5fb;}
+.project-history-page #historyLoadingRow .spinner-border{width:2rem;height:2rem;}
+.project-history-page #historyEmptyState{color:rgba(255,255,255,0.65);}
+.project-history-page #historyEmptyState .material-icons{opacity:.45;}
+.project-history-page #historyPagination .pagination .page-item .page-link{
+  background:#193743;
+  border-color:rgba(255,255,255,0.18);
+  color:#dbe7f2;
+}
+.project-history-page #historyPagination .pagination .page-item.disabled .page-link{
+  color:rgba(255,255,255,0.35);
+  background:#162d38;
+}
+.project-history-page #historyPagination .pagination .page-item.active .page-link{
+  background:var(--projekty);
+  border-color:transparent;
+  color:#fff;
+}
+.project-history-page #historyEntryBody,
+.project-history-page #historyChunkBody{
+  background:#0f2530;
+  border:1px solid rgba(255,255,255,0.08);
+  color:#e9f2fb;
+}
+.project-history-page #historyEntryChunks .list-group-item{
+  background:#102832;
+  border-color:rgba(255,255,255,0.12);
+}
+.project-history-page #historyEntryChunks .list-group-item:hover{
+  background:#173744;
+}
+.project-history-page #historyEntryChunks .btn{
+  color:#fff;
+  border-color:rgba(255,255,255,0.24);
+}
+.project-history-page .modal-content{background:#122630;color:#fff;}
+.project-history-page .modal-header,
+.project-history-page .modal-footer{background:#152c36;border-color:rgba(255,255,255,0.08);}
+.project-history-page .modal-title{color:#fff;}
+.project-history-page dl{margin-bottom:0;}
+.project-history-page dt{font-weight:600;color:rgba(255,255,255,0.75);}
+.project-history-page dd{color:rgba(255,255,255,0.9);}
+
+@media (max-width:991.98px){
+  .project-history-page form .col-12,
+  .project-history-page form .col-6{
+    flex:0 0 100%;
+    max-width:100%;
+  }
+  .project-history-page form .ms-auto{margin-left:0!important;margin-top:.5rem;}
+}
+
+@media (max-width:575.98px){
+  .project-history-page .card-body{padding:1rem;}
+  .project-history-page #historyTable thead{display:none;}
+  .project-history-page #historyTable tbody td{display:block;width:100%;padding:.5rem .65rem;}
+  .project-history-page #historyTable tbody tr{display:block;margin-bottom:1rem;border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:hidden;background:#122630;}
+  .project-history-page #historyTable tbody td.text-end{text-align:left!important;}
+  .project-history-page #historyTable tbody td.text-center{text-align:left!important;}
+  .project-history-page #historyTable tbody td:first-child{padding-top:.75rem;}
+  .project-history-page #historyTable tbody td:last-child{padding-bottom:.75rem;}
+  .project-history-page #historyTable tbody tr button{width:100%;}
+}
+
+/* Projects page gallery full-width adjustment */
+.projects-gallery{width:100%; margin-top:.5rem;}
+.projects-gallery .project-grid{margin-top:.25rem;}
+
+/* --- New Project / forms harmonization --- */
+.breadcrumb{background:transparent; padding:0; margin-bottom:1.1rem; --bs-breadcrumb-divider: ''; display:flex; flex-wrap:wrap; gap:.4rem;}
+.breadcrumb .breadcrumb-item{font-size:.70rem; text-transform:uppercase; letter-spacing:.7px; font-weight:500; margin:0; line-height:1; display:flex; align-items:center;}
+.breadcrumb .breadcrumb-item + .breadcrumb-item{padding-left:0;}
+.breadcrumb .breadcrumb-item a{display:inline-block; background:#193743; color:#fff; padding:.40rem .70rem .38rem; border-radius:7px; text-decoration:none; border:1px solid rgba(255,255,255,0.07); box-shadow:0 1px 2px rgba(0,0,0,0.25);}
+.breadcrumb .breadcrumb-item a:hover{background:#1d404d; border-color:rgba(255,255,255,0.15); color:#fff; text-decoration:none;}
+.breadcrumb .breadcrumb-item.active{background:#1d404d; color:#fff; padding:.40rem .70rem .38rem; border-radius:7px; border:1px solid rgba(255,255,255,0.12); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,0.35);}
+
+/* Info alert restyle to fit dark theme */
+.alert-info{background:rgba(13,202,240,0.12); border:1px solid rgba(13,202,240,0.25); color:#b9edf8;}
+.alert-info strong{color:#fff;}
+/* Form labels & helpers on dark */
+form .form-label{color:#fff; font-weight:500;}
+form .form-text{color:rgba(255,255,255,0.6);}
+/* Inputs on dark background */
+.form-control, .form-select{background:#122630; border:1px solid rgba(255,255,255,0.15); color:#fff;}
+.form-control:focus, .form-select:focus{background:#152c36; border-color:var(--projekty); color:#fff; box-shadow:0 0 0 .15rem rgba(13,110,253,0.25);}
+.form-control::placeholder{color:rgba(255,255,255,0.45);}
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"]{
+  color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator{
+  filter: invert(0.75);
+}
+/* Disabled consistency */
+.form-control:disabled, .form-select:disabled{background:#0f1f27; color:rgba(255,255,255,0.4);}
+/* Horizontal rule subtle */
+form hr{border-color:rgba(255,255,255,0.1);}
+/* Panel form spacing */
+.ui-panel .card-body{padding:1.35rem 1.5rem 1.4rem;}
+.ui-form{margin-top:.35rem;}
+.ui-form .mb-3:last-child{margin-bottom:0;}
+/* Slightly larger gap between grouped rows */
+.ui-form .row{row-gap:.75rem;}
+.response-btn-grid{grid-template-columns:1fr;}
+.response-btn-grid .btn{min-height:48px;}
+@media (min-width:768px){
+  .response-btn-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+/* === Organizations Page Layout === */
+.org-list .org-panel { background: var(--panel-bg, #122630); border: 1px solid rgba(255,255,255,0.08); }
+.org-grid { display: grid; grid-template-columns: 1.2fr 1.6fr 0.9fr; gap: 1.25rem; align-items: start; }
+@media (max-width: 1400px) { .org-grid { grid-template-columns: 1.4fr 1.6fr 1fr; } }
+@media (max-width: 1200px) { .org-grid { grid-template-columns: 1.2fr 1.8fr; } .org-grid .org-actions { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .org-grid { grid-template-columns: 1fr; } .org-grid .org-limits, .org-grid .org-actions { grid-column: 1; } }
+.org-avatar { width: 34px; height: 34px; background: linear-gradient(135deg, #2f3242, #232531); border-radius: 8px; color: #8aa2ff; }
+.org-main h5 { font-size: 1rem; font-weight: 600; }
+.org-inline-form input[type=number] { background: #222532; border-color: #343848; color: #d3d6e2; }
+.org-inline-form input[type=number]:focus { box-shadow: 0 0 0 2px rgba(120,140,255,.25); }
+.org-inline-form .form-label { color: #9096a5; font-weight: 500; }
+.org-actions .btn { font-size: .72rem; display: flex; align-items: center; padding: .35rem .55rem; }
+.org-actions .btn i { font-size: 1rem; line-height: 1; }
+.org-actions .btn-outline-secondary { --bs-btn-color: #9aa2b5; --bs-btn-border-color: #3a3f4d; }
+.org-actions .btn-outline-secondary:hover { background: #3a3f4d; }
+.org-actions .btn-outline-primary { --bs-btn-color: #96b7ff; --bs-btn-border-color: #2d4777; }
+.org-actions .btn-outline-primary:hover { background: #1e2d47; }
+.org-actions .btn-danger { background: #5c1f29; border-color: #7a2835; }
+.org-actions .btn-danger:hover { background: #7a2835; }
+.org-actions .btn-warning { background: #735e1d; border-color: #8b7426; color: #f3e4b1; }
+.org-actions .btn-warning:hover { background: #8b7426; }
+.w-110 { width: 110px !important; }
+.w-140 { width: 140px !important; }
+.w-160 { width: 160px !important; }
+.org-inline-form .org-field{display:flex;flex-direction:column;gap:.15rem;}
+.org-inline-form .org-field input{font-size:.72rem;padding:.32rem .45rem;}
+.org-inline-form .org-field label{font-size:.63rem;letter-spacing:.5px;text-transform:uppercase;opacity:.9;}
+/* === FAQ Page Theming === */
+.faq-wrapper .faq-icon{width:44px;height:44px;background:#193743;border:1px solid rgba(255,255,255,0.08);border-radius:12px;color:#ffc107;}
+.faq-search-box{min-width:240px;}
+.faq-search-box .form-control{padding-left:2rem;}
+.faq-search-box .faq-search-icon{position:absolute;left:.55rem;top:50%;transform:translateY(-50%);font-size:1.1rem;color:rgba(255,255,255,0.55);}
+.faq-accordion .accordion-item{background:#122630;border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-bottom:.65rem;overflow:hidden;}
+.faq-accordion .accordion-item:last-child{margin-bottom:0;}
+.faq-accordion .accordion-button{background:#193743;color:#fff;font-weight:500;font-size:.9rem;padding:.85rem 1rem;box-shadow:none;}
+.faq-accordion .accordion-button.collapsed{background:#152c36;color:#fff;}
+.faq-accordion .accordion-button:focus{box-shadow:0 0 0 2px rgba(13,110,253,0.35);}
+.faq-accordion .accordion-button:not(.collapsed){border-bottom:1px solid rgba(255,255,255,0.08);}
+.faq-accordion .accordion-body{background:#122630;color:rgba(255,255,255,0.82);font-size:.8rem;line-height:1.45;padding:1rem 1rem 1.05rem;}
+.faq-accordion h6{color:#fff;font-size:.75rem;letter-spacing:.5px;text-transform:uppercase;}
+.faq-accordion ol, .faq-accordion ul{padding-left:1.1rem;}
+.faq-accordion li{margin-bottom:.35rem;}
+.faq-no-results{background:#152c36;border:1px solid rgba(255,255,255,0.08);border-radius:8px;margin-top:.75rem;padding:.60rem .75rem;}
+/* === Organization Edit Page === */
+.org-edit-wrapper .panel-icon{width:48px;height:48px;background:#193743;border:1px solid rgba(255,255,255,0.10);border-radius:14px;color:#8aa2ff;}
+.org-edit-wrapper .ui-panel-body{padding:1.6rem 1.5rem 1.85rem;}
+.form-section{background:#122630; border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:1.05rem 1.1rem 1.15rem;}
+.form-section + .form-section{margin-top:1.25rem;}
+.form-section-header{font-size:.70rem; text-transform:uppercase; letter-spacing:.55px; font-weight:600; color:#fff; margin-bottom:.55rem; display:flex; align-items:center; gap:.4rem;}
+.btn-copy-address{padding:.25rem .45rem; line-height:1; display:inline-flex; align-items:center; justify-content:center;}
+.btn-copy-address.copied{background:#198754; border-color:#198754; color:#fff;}
+/* Reuse for new organization inline button */
+.ui-panel .btn-copy-address{padding:.25rem .5rem; line-height:1; display:inline-flex; align-items:center; justify-content:center;}
+.ui-panel .btn-copy-address i{font-size:1rem;}
+

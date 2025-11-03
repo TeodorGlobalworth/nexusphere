@@ -1,0 +1,2 @@
+docker/clamav/*.conf text eol=lf# Set default behavior to automatically normalize line endings to LF
+* text=auto eol=lf

@@ -1,0 +1,5 @@
+fastapi>=0.115.0,<0.116.0
+uvicorn[standard]>=0.30.0,<0.31.0
+FlagEmbedding>=1.2.10,<2.0.0
+numpy>=1.26.0,<2.0.0
+scipy>=1.11.0,<2.0.0

@@ -1,0 +1,108 @@
+﻿{% extends "base.html" %}
+{% block title %}{{ _('Konfiguracja Projektu') }} - {{ project.name }}{% endblock %}
+{% block content %}
+<div class="container-fluid px-4 project-config-page">
+  <div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+  <h1 class="h4 mb-0">{{ _('Konfiguracja Projektu: %(name)s', name=project.name) }}</h1>
+  <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="btn btn-outline-secondary"><i class="material-icons me-1">arrow_back</i> {{ _('Powrót') }}</a>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-12 col-lg-7 mb-4">
+      <div class="ui-panel project-settings-panel">
+        <div class="ui-panel-header d-flex align-items-center">
+          <i class="material-icons me-2">settings</i>
+          <span class="fw-semibold">{{ _('Parametry') }}</span>
+        </div>
+        <div class="ui-panel-body pt-4">
+          <form method="POST" class="ui-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}"/>
+            <div class="mb-3">
+              <label class="form-label">{{ _('Kontekst projektu') }}</label>
+              <select name="context" class="form-select">
+                <option value="" {{ 'selected' if not project.context else '' }}>{{ _('Brak kontekstu') }}</option>
+                {% for ctx in contexts %}
+                  <option value="{{ ctx.context_key }}" {{ 'selected' if ctx.context_key == (project.context or '') else '' }}>{{ ctx.context_key }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text helper-muted">{{ Wybierz globalny prompt bazowy, który będzie używany przy generowaniu odpowiedzi dla tego projektu. }}</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">{{ Styl odpowiedzi (domyślny) }}</label>
+              <select name="response_style" class="form-select">
+                <option value="formal" {{ 'selected' if project.response_style=='formal' else '' }}>{{ _('Formal') }}</option>
+                <option value="standard" {{ 'selected' if project.response_style=='standard' else '' }}>{{ _('Standard') }}</option>
+                <option value="casual" {{ 'selected' if project.response_style=='casual' else '' }}>{{ _('Casual') }}</option>
+              </select>
+              <div class="form-text helper-muted">{{ Domyślny ton wiadomości generowanych przez AI dla tego projektu. }}</div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">{{ _('Opis') }}</label>
+              <textarea name="description" rows="4" class="form-control" placeholder="{{ Opis projektu... }}">{{ project.description or '' }}</textarea>
+            </div>
+            <div class="d-flex justify-content-end">
+              <button type="submit" class="btn btn-primary"><i class="material-icons me-1">save</i> {{ _('Zapisz') }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+  <div class="ui-panel mt-4 project-danger-zone">
+        <div class="ui-panel-header d-flex align-items-center text-danger">
+          <i class="material-icons me-2">warning</i>
+          <span class="fw-semibold">{{ _('Strefa zagrożenia') }}</span>
+        </div>
+        <div class="ui-panel-body">
+          <p class="small mb-3">{{ Usunięcie projektu spowoduje trwałe skasowanie plików, kont email oraz historii generowania odpowiedzi. Operacji nie można cofnąć. }}</p>
+          {% if not current_user.mfa_enabled %}
+          <div class="alert alert-warning d-flex align-items-start gap-2 small mb-3">
+            <i class="material-icons text-warning flex-shrink-0">security</i>
+            <div>
+              <strong>{{ _('Wymagane MFA') }}</strong><br>
+              {{ Aby usunąć projekt, najpierw skonfiguruj uwierzytelnianie wieloskładnikowe (MFA) w ustawieniach konta. }}
+            </div>
+          </div>
+          {% endif %}
+          {% if current_user.is_admin or current_user.is_superadmin %}
+          <button type="button"
+                  class="btn btn-outline-danger d-inline-flex align-items-center gap-2"
+                  data-project-delete
+                  data-project-public-id="{{ project.public_id }}"
+                  data-redirect-url="{{ url_for('admin.projects') if (current_user.is_admin or current_user.is_superadmin) else url_for('main.dashboard') }}">
+            <i class="material-icons">delete_forever</i>
+            <span>{{ _('Usuń projekt') }}</span>
+          </button>
+          {% else %}
+          <p class="text-muted small mb-0">{{ Skontaktuj się z administratorem organizacji, aby usunąć projekt. }}</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-5 mb-4">
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script id="i18n-project-config" type="application/json">{{ {
+  'saved': "Zapisano zmiany",
+  'errorPrefix': "Błąd:",
+  'packagesIncreaseOnly': "Możesz tylko zwiększyć liczbę pakietów. Zmniejszenie wymaga superadmin.",
+  'maxChars': "Maks. 5000 znaków.",
+  'lifetimeTokens': "Wykorzystane tokeny (lifetime)",
+  'packagesChangeLogEmpty': "Brak zmian.",
+  'confirmDelete': "Czy na pewno chcesz trwale usunąć ten projekt? Operacji nie można cofnąć.",
+  'deletingProject': "Usuwanie projektu...",
+  'projectDeleted': "Projekt został usunięty.",
+  'deleteFailed': "Nie udało się usunąć projektu.",
+  'networkError': "Wystąpił błąd sieci podczas usuwania projektu.",
+  'mfaPrompt': "Podaj 6-cyfrowy kod MFA, aby potwierdzić usunięcie projektu:",
+  'mfaInvalid': "Niepoprawny kod MFA.",
+  'mfaCancelled': "Operacja anulowana.",
+  'requireMfaFirst': "Aby usunąć projekt, aktywuj najpierw MFA w ustawieniach konta.",
+}|tojson }}</script>
+<script id="project-mfa-flag" type="application/json">{{ {'mfa': (1 if current_user.mfa_enabled else 0)}|tojson }}</script>
+<script src="{{ url_for('static', filename='js/pages/project_config.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+{% endblock %}
+

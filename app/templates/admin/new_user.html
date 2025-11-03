@@ -1,0 +1,96 @@
+﻿{% extends "base.html" %}
+
+{% block title %}NexuSphere - {{ _('Nowy Użytkownik - Panel Administratora') }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-10 col-lg-8">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">{{ _('Admin') }}</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.users') }}">{{ _('Użytkownicy') }}</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ _('Nowy Użytkownik') }}</li>
+                </ol>
+            </nav>
+
+            <div class="ui-panel">
+                <div class="ui-panel-header d-flex align-items-center">
+                    <i class="material-icons me-2">person_add</i>
+                    <h5 class="mb-0">{{ _('Dodaj Nowego Użytkownika') }}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="newUserForm" class="ui-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <div class="mb-3">
+                                                <label for="username" class="form-label">{{ _('Nazwa Użytkownika') }} *</label>
+                                                <input type="text" id="username" name="username" class="form-control" required placeholder="{{ _('np. jan.kowalski') }}">
+                                                <div class="form-text">{{ _('Unikalna nazwa użytkownika do logowania') }}</div>
+                                        </div>
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">{{ _('Adres Email') }} *</label>
+                        <input type="email" id="email" name="email" class="form-control" required placeholder="{{ _('jan.kowalski@firma.com') }}">
+                        <div class="form-text">{{ _('Adres email również może być używany do logowania') }}</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">{{ _('Hasło') }} *</label>
+                        <input type="password" id="password" name="password" class="form-control" required minlength="8" placeholder="{{ _('Minimum 8 znaków') }}">
+                        <div class="form-text" id="passwordHelp">{{ _('Hasło powinno mieć minimum 8 znaków') }}</div>
+                    </div>
+                    <div id="passwordStrength"></div>
+
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">{{ _('Potwierdź Hasło') }} *</label>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-control" required placeholder="{{ _('Powtórz hasło') }}">
+                        <div class="invalid-feedback" id="passwordMismatch"></div>
+                    </div>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin">
+                        <label class="form-check-label" for="is_admin">{{ _('Administrator') }}</label>
+                        <div class="form-text text-warning"><i class="material-icons align-middle">warning</i> {{ _('Administrator ma pełny dostęp do systemu.') }}</div>
+                    </div>
+
+                    {% if current_user.is_superadmin %}
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="is_superadmin" name="is_superadmin">
+                        <label class="form-check-label" for="is_superadmin">{{ _('Superadmin (global)') }}</label>
+                        <div class="form-text">Superadmin ma pełny dostęp do systemu.</div>
+                    </div>
+                    {% endif %}
+
+                    <div class="divider my-3"></div>
+
+                    <div class="d-flex justify-content-between mt-3">
+                        <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary"><i class="material-icons me-1">arrow_back</i> {{ _('Powrót') }}</a>
+                        <button type="submit" class="btn btn--uzytkownicy" id="submitBtn"><i class="material-icons me-1">person_add</i> {{ _('Utwórz Użytkownika') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pages/admin_new_user.js') }}" nonce="{{ csp_nonce() }}" defer></script>
+<script id="i18n-new-user" type="application/json">{{ {
+    'needLen': "min 8 znaków",
+    'needLower': "małe litery",
+    'needUpper': "wielkie litery",
+    'needDigit': "cyfry",
+    'needSpecial': "znaki specjalne",
+    'veryWeak': "Bardzo słabe",
+    'weak': "Słabe",
+    'medium': "Średnie",
+    'good': "Dobre",
+    'veryGood': "Bardzo dobre",
+    'add': "Dodaj",
+    'passwordsMismatch': "Hasła nie są identyczne",
+    'fixErrors': "Proszę poprawić błędy w formularzu."
+}|tojson }}</script>
+{% endblock %}
+
