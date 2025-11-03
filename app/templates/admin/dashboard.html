@@ -9,8 +9,8 @@
         <div class="d-flex justify-content-between align-items-center">
             <h1 class="h3 mb-2">Panel Administratora</h1>
             <div class="d-flex gap-2">
-                <a href="{{ url_for('admin.new_project') }}" class="btn btn-primary btn-sm">
-                    <i class="material-icons me-1">add</i>{{ _('Nowy Projekt') }}
+                <a href="{{ url_for('admin.new_project') }}" class="btn btn-primary">
+                    <i class="material-icons me-1">add</i>{{ _('Nowy Budynek') }}
                 </a>
                 <a href="{{ url_for('admin.new_user') }}" class="btn btn-secondary btn-sm">
                     <i class="material-icons me-1">person_add</i>{{ _('Nowy Użytkownik') }}
@@ -27,7 +27,7 @@
             <div class="card-body py-2 px-3">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <div class="small">Projekty</div>
+                        <div class="small">Budynki</div>
                         <h3 class="mb-0">{{ stats.total_projects }}</h3>
                     </div>
                     <i class="material-icons display-4">assessment</i>
@@ -50,13 +50,13 @@
     </div>
 </div>
 
-<!-- Ostatnie Projekty -->
+<!-- Ostatnie Budynki -->
 <div class="row">
     <div class="col-12 col-md-8">
     <div class="ui-panel ui-gallery">
             <div class="ui-panel-header">
                 <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">{{ _('Ostatnie Projekty') }}</h5>
+                    <h5 class="mb-0">{{ _('Ostatnie Budynki') }}</h5>
                     <a href="{{ url_for('admin.projects') }}" class="btn btn-outline-secondary">{{ _('Zobacz wszystkie') }}</a>
                 </div>
             </div>
@@ -65,7 +65,8 @@
                 <div class="project-grid row gx-3 gy-3">
                     {% for project in projects[:6] %}
                     <div class="col-12 col-md-6 col-lg-4">
-                        <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="project-tile text-decoration-none" aria-label="{{ _('Przejdź do projektu') }}: {{ project.name }}">
+                                            {% for project in recent_projects %}
+                        <a href="{{ url_for('project.dashboard', project_public_id=project.public_id) }}" class="project-tile text-decoration-none" aria-label="{{ _('Przejdź do budynku') }}: {{ project.name }}">
                             <div class="project-name"><strong>{{ project.name }}</strong></div>
                         </a>
                     </div>
@@ -73,9 +74,9 @@
                 </div>
                 {% else %}
                 <div class="text-center">
-                    <i class="material-icons large">folder_open</i>
-                    <h5 class="text">{{ _('Brak projektów') }}</h5>
-                    <p class="text">{{ _('Utwórz pierwszy projekt, aby rozpocząć pracę z systemem.') }}</p>
+                    <i class="material-icons large">apartment</i>
+                    <h5 class="text">{{ _('Brak budynków') }}</h5>
+                    <p class="text">{{ _('Utwórz pierwszy budynek, aby rozpocząć pracę z systemem.') }}</p>
                 </div>
                 {% endif %}
             </div>
@@ -124,7 +125,7 @@
 
 {% block scripts %}
 <script id="i18n-admin-dashboard" type="application/json">{{ {
-    'projects': "Projekty",
+    'projects': "Budynki",
     'users': "Użytkownicy",
     'packages': "Pakiety",
     'tokens': "Tokeny AI",

@@ -739,55 +739,31 @@ class RetrievalPipeline:
         rerank_top_k: Optional[int],
         rerank_threshold: Optional[float],
     ) -> List[Dict[str, Any]]:
+        # RERANKING DISABLED - Return documents directly after RRF
         if not documents:
             self._last_rerank_settings = {
-                'provider': rerank_provider or current_app.config.get('RERANK_PROVIDER', 'none'),
-                'model': rerank_model or current_app.config.get('NOVITA_RERANK_MODEL') or current_app.config.get('ZEROENTROPY_MODEL'),
-                'top_k': rerank_top_k or max_context_docs,
-                'threshold': rerank_threshold if rerank_threshold is not None else current_app.config.get('RERANK_THRESHOLD_DEFAULT'),
+                'provider': 'disabled',
+                'model': None,
+                'top_k': max_context_docs,
+                'threshold': None,
             }
             self._last_rerank_query = query_text
+            self._last_rerank_usage = None
             return []
 
-        provider_name = (rerank_provider or current_app.config.get('RERANK_PROVIDER', 'none') or 'none').strip()
-        try:
-            configured_top = int(current_app.config.get('RERANK_TOP_K_DEFAULT', max_context_docs))
-        except Exception:
-            configured_top = max_context_docs
-        top_k = rerank_top_k if rerank_top_k is not None else configured_top
-        if top_k is None:
-            top_k = max_context_docs
-        top_k = max(1, min(max_context_docs, top_k))
-
-        if rerank_threshold is None:
-            rerank_threshold = current_app.config.get('RERANK_THRESHOLD_DEFAULT')
-
-        reranked, usage = self.rerank_service.rerank_documents(
-            query=query_text,
-            documents=documents,
-            provider=provider_name,
-            top_k=top_k,
-            threshold=rerank_threshold,
-            model=rerank_model,
-        )
-        self.usage_tracker.track('rerank', usage)
-        self._last_rerank_usage = usage.to_dict()
+        # Store settings to indicate reranking was skipped
         self._last_rerank_settings = {
-            'provider': provider_name,
-            'model': rerank_model,
-            'top_k': top_k,
-            'threshold': rerank_threshold,
+            'provider': 'disabled',
+            'model': None,
+            'top_k': max_context_docs,
+            'threshold': None,
         }
         self._last_rerank_query = query_text
+        self._last_rerank_usage = None
 
-        if reranked:
-            return reranked
-
-        threshold_val = self._float_or_none(rerank_threshold)
-        if threshold_val is not None:
-            documents = [doc for doc in documents if (doc.get('score') or 0) >= threshold_val]
+        # Return documents sorted by RRF score, limited to max_context_docs
         documents.sort(key=lambda item: (item.get('score') or 0), reverse=True)
-        return documents[:top_k]
+        return documents[:max_context_docs]
 
     def _extract_file_ids(self, documents: Sequence[Dict[str, Any]], limit: int) -> List[int]:
         file_ids: List[int] = []

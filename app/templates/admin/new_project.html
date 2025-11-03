@@ -1,38 +1,41 @@
 ﻿{% extends "base.html" %}
 
-{% block title %}{{ _('NexuSphere - Nowy Projekt - Panel Administratora') }}{% endblock %}
+{% block title %}{{ _('NexuSphere - Nowy Budynek - Panel Administratora') }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4">
-    <div class="row justify-content-center">
-        <div class="col-12 col-md-10 col-lg-8">
-            <nav aria-label="breadcrumb">
-                <ol class="breadcrumb">
-                    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">{{ _('Admin') }}</a></li>
-                    <li class="breadcrumb-item"><a href="{{ url_for('admin.projects') }}">{{ _('Projekty') }}</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">{{ _('Nowy Projekt') }}</li>
-                </ol>
-            </nav>
-
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">{{ _('Dashboard') }}</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('admin.projects') }}">{{ _('Budynki') }}</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ _('Nowy Budynek') }}</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-8 mx-auto">
             <div class="ui-panel">
-                <div class="ui-panel-header d-flex align-items-center">
-                    <i class="material-icons me-2">add</i>
-                    <h5 class="mb-0">{{ _('Utwórz Nowy Projekt') }}</h5>
-                </div>
+                <div class="ui-panel-header">
+                    <h5 class="mb-0">{{ _('Utwórz Nowy Budynek') }}</h5>
                 <div class="card-body">
                     <form method="POST" class="ui-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
                         <div class="mb-3">
-                            <label for="name" class="form-label">{{ _('Nazwa Projektu') }} *</label>
-                            <input type="text" id="name" name="name" class="form-control" required placeholder="{{ _('np. Obsługa Klienta, Zarządzanie Budynkiem') }}">
-                            <div class="form-text">{{ _('Krótka, opisowa nazwa projektu') }}</div>
+                            <label for="name" class="form-label">{{ _('Nazwa Budynku') }} *</label>
+                            <input type="text" class="form-control" id="name" name="name" required placeholder="{{ _('np. Budynek A, Osiedle Zielone, etc.') }}">
+                            <div class="form-text">{{ _('Krótka, opisowa nazwa budynku') }}</div>
                         </div>
 
                         <div class="mb-3">
                             <label for="description" class="form-label">{{ _('Opis') }}</label>
-                            <textarea id="description" name="description" class="form-control" rows="4" placeholder="{{ _('Opcjonalny opis projektu, jego celów i zakresu działania...') }}"></textarea>
-                            <div class="form-text">{{ _('Szczegółowy opis pomoże użytkownikom zrozumieć cel projektu') }}</div>
+                            <textarea id="description" name="description" class="form-control" rows="4" placeholder="{{ _('Opcjonalny opis budynku, jego celów i zakresu działania...') }}"></textarea>
+                            <div class="form-text">{{ _('Szczegółowy opis pomoże użytkownikom zrozumieć cel budynku') }}</div>
                         </div>
 
                         <div class="mb-3">

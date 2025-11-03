@@ -1,12 +1,12 @@
 ﻿{% extends "base.html" %}
 
-{% block title %}NexuSphere - {{ _('Projekty - Panel Administratora') }}{% endblock %}
+{% block title %}NexuSphere - {{ _('Budynki - Panel Administratora') }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid px-4">
     <div class="row mb-3">
         <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <h1 class="h3 mb-0">{{ _('Zarządzanie Projektami') }}</h1>
+            <h1 class="h3 mb-0">{{ _('Zarządzanie Budynkami') }}</h1>
             <div class="d-flex flex-wrap gap-2">
                 {% if projects %}
                     {% set first_org_id = projects[0].organization_id %}
@@ -26,7 +26,7 @@
 <div class="ui-gallery projects-gallery px-4">
     <div class="row mb-2">
         <div class="col-12 col-md-6 col-lg-4">
-            <input id="projectFilterInput" type="text" class="form-control" placeholder="{{ _('Filtruj projekty') }}" aria-label="{{ _('Filtruj projekty') }}">
+            <input id="projectFilterInput" type="text" class="form-control" placeholder="{{ _('Filtruj budynki') }}" aria-label="{{ _('Filtruj budynki') }}">
         </div>
     </div>
     <div class="project-grid row row-cols-1 row-cols-sm-2 row-cols-md-2 row-cols-lg-3 row-cols-xl-4 g-3 g-lg-4">
@@ -58,7 +58,7 @@
     {% if pagination %}
     <div class="row">
         <div class="col-12 d-flex justify-content-center">
-            <nav aria-label="{{ _('Paginacja projektów') }}">
+            <nav aria-label="{{ _('Paginacja budynków') }}">
                 <ul class="pagination">
                     <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}"><a class="page-link" href="{{ url_for('admin.projects', page=pagination.prev_num) }}">«</a></li>
                     <li class="page-item active"><span class="page-link">{{ pagination.page }}</span></li>
@@ -71,23 +71,23 @@
 </div>
 {% else %}
 <div class="text-center py-5">
-    <i class="material-icons display-4 large">folder_open</i>
-    <h3 class="text">{{ _('Brak projektów') }}</h3>
-    <p class="text">{{ _('Utwórz pierwszy projekt, aby rozpocząć pracę z systemem.') }}</p>
+    <i class="material-icons display-4 large">apartment</i>
+    <h3 class="text">{{ _('Brak budynków') }}</h3>
+    <p class="text">{{ _('Utwórz pierwszy budynek, aby rozpocząć pracę z systemem.') }}</p>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script id="i18n-projects" type="application/json">{{ {
-  'confirmDelete': "Czy na pewno chcesz usunąć ten projekt? Ta operacja jest nieodwracalna.",
-  'deletingProject': "Usuwanie projektu...",
-  'projectDeleted': "Projekt został usunięty",
+  'confirmDelete': "Czy na pewno chcesz usunąć ten budynek? Ta operacja jest nieodwracalna.",
+  'deletingProject': "Usuwanie budynku...",
+  'projectDeleted': "Budynek został usunięty",
   'error': "Błąd",
-  'deleteFailed': "Nie udało się usunąć projektu",
-  'networkErrorDelete': "Błąd sieci podczas usuwania projektu",
+  'deleteFailed': "Nie udało się usunąć budynku",
+  'networkErrorDelete': "Błąd sieci podczas usuwania budynku",
   'noReportUrl': "Brak adresu raportu",
-  'mfaPrompt': "Podaj 6-cyfrowy kod MFA, aby potwierdzić usunięcie projektu:",
+  'mfaPrompt': "Podaj 6-cyfrowy kod MFA, aby potwierdzić usunięcie budynku:",
   'mfaInvalid': "Operacja anulowana: nieprawidłowy kod MFA",
   'reportRange': "Zakres raportu",
   'close': "Zamknij",

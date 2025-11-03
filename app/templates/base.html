@@ -42,7 +42,7 @@
         <nav class="nav nav-pills flex-column px-2 py-2">
         {% if current_user.is_admin %}
           <a href="{{ url_for('admin.dashboard') }}" class="nav-link"><i class="material-icons me-2">dashboard</i> Panel Admina</a>
-          <a href="{{ url_for('admin.projects') }}" class="nav-link"><i class="material-icons me-2">folder_open</i> Projekty</a>
+          <a href="{{ url_for('admin.projects') }}" class="nav-link"><i class="material-icons me-2">apartment</i> Budynki</a>
           <a href="{{ url_for('admin.users') }}" class="nav-link"><i class="material-icons me-2">people</i> Użytkownicy</a>
           {% if current_user.is_superadmin %}
             <a href="{{ url_for('admin.experimental') }}" class="nav-link"><i class="material-icons me-2">science</i> Eksperymentalne</a>
